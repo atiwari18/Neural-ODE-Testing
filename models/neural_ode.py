@@ -7,13 +7,13 @@ import os
 
 class ODEFunc(nn.Module):
     def __init__(self):
-        super(ODEFunc, self).__init()
+        super(ODEFunc, self).__init__()
 
         #MLP
         self.net = nn.Sequential(
-            nn.Linear(2, 25),        #2 here because we are concatenating time. 
+            nn.Linear(2, 50),        #2 here because we are concatenating time. 
             nn.Tanh(), 
-            nn.Linear(25, 1)
+            nn.Linear(50, 1)
         )
 
     def forward(self, t, y):
@@ -33,7 +33,7 @@ def train_ode(model, epochs, optimizer, criterion, t, y):
         optimizer.zero_grad()
 
         #Integration from t_0 up to t_final, the solcer will solve at every timestamp in t_train
-        pred_y = odeint(model, y[0], t)
+        pred_y = odeint(model, y[0:1], t)
 
         loss = criterion(pred_y, y)
         loss.backward()
@@ -45,12 +45,34 @@ def train_ode(model, epochs, optimizer, criterion, t, y):
 
     return losses
 
+def plot_loss(losses):
+    plt.figure(figsize=(10, 6))
+    plt.plot(losses, label='Training Loss')
+    plt.title('Training Loss Over Epochs')
+    plt.xlabel('Epoch')
+    plt.ylabel('Loss Value')
+    plt.legend()
+    plt.grid(True)
+
+    script_path = os.path.abspath(__file__)
+    script_dir = os.path.dirname(script_path)
+    project_root = os.path.dirname(script_dir)
+    
+    results_dir = os.path.join(project_root, 'Results')
+    os.makedirs(results_dir, exist_ok=True)
+    
+    full_path = os.path.join(results_dir, "Losses.png")
+
+    #Save the figure
+    plt.savefig(full_path)
+    print(f"Plot saved to: {full_path}")
+
 def extrapolate(model, t_train, y_train):
     t_future = torch.linspace(float(t_train[-1]), 6 * torch.pi, 50)
 
     with torch.no_grad():
         #Use last known point as the new initial condition
-        y_future = odeint(model, y_train[-1], t_future)
+        y_future = odeint(model, y_train[-1:], t_future)    #[-1:] so that the shape is (1, 1)
 
     return t_future, y_future
 
@@ -76,7 +98,7 @@ def plot_vector_field(model, file_name, t_range=(0, 6*np.pi), y_range=(-1.5, 1.5
                 V[j, i] = dy_dt.item()
 
     plt.figure(figsize=(10, 6))
-    plt.streamplot(T, Y, U, V, color=V, cmap='coolwarm', alpha=0.8)
+    plt.streamplot(T, Y, U, V, color=V, cmap='coolwarm')
     plt.title("Learned Vector Field (Time vs. State)")
     plt.xlabel("Time (t)")
     plt.ylabel("Value (y)")

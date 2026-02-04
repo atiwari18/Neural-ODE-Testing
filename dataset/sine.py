@@ -4,7 +4,7 @@ import torch
 import os
 
 def generate_irregular(n_samples, t_max=4*np.pi):
-    t = np.sort(np.random.rand(n_samples) * 4 * np.pi)
+    t = np.sort(np.random.rand(n_samples) * t_max)
     t[0] = 0
 
     #calculate the sine values
