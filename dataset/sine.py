@@ -7,33 +7,42 @@ def generate_irregular(n_samples, t_max=4*np.pi):
     t = np.sort(np.random.rand(n_samples) * t_max)
     t[0] = 0
 
-    #calculate the sine values
+    # Calculate position and velocity
     y = np.sin(t)
+    v = np.cos(t)  # velocity = dy/dt
 
-    #Add noise to make it more "real"
+    # Add noise to make it more "real"
     y_noise = y + 0.1 * np.random.randn(n_samples)
+    v_noise = v + 0.1 * np.random.randn(n_samples)
 
-    #Convert to tensors
+    # Stack into state: [position, velocity]
+    state = np.stack([y_noise, v_noise], axis=1)  # Shape: [n_samples, 2]
+
+    # Convert to tensors
     t_tensor = torch.tensor(t).float()
-    y_tensor = torch.tensor(y_noise).float().unsqueeze(-1) #Shape: [n_samples, feature_dim (1)]
+    state_tensor = torch.tensor(state).float()  # Shape: [n_samples, 2]
 
-    return t_tensor, y_tensor
+    return t_tensor, state_tensor
 
-def plot_samples(t, y, title, file_name):
-    #Generate a smooth line for sine wave
+
+def plot_samples(t, state, title, file_name):
+    # Extract position from state
+    y = state[:, 0]  # First column is position
+    
+    # Generate a smooth line for sine wave
     t_smooth = np.linspace(0, float(t.max()), 200)
     y_true = np.sin(t_smooth)
 
     plt.figure(figsize=(10, 5))
 
-    #plot ground truth
-    plt.plot(t_smooth, y_true, label="True Function", color="red", linestyle = "--", alpha=0.6)
+    # Plot ground truth
+    plt.plot(t_smooth, y_true, label="True Function", color="red", linestyle="--", alpha=0.6)
 
-    #PLot the regular, noisy samples
+    # Plot the irregular, noisy samples (only position)
     plt.scatter(t.numpy(), y.numpy(), color="blue", label="Irregular Observations", s=18)
     plt.title(title)
     plt.xlabel("Time (t)")
-    plt.ylabel("Value (y)")
+    plt.ylabel("Position (y)")
     plt.legend()
     plt.grid(True, alpha=0.3)
 
@@ -46,12 +55,12 @@ def plot_samples(t, y, title, file_name):
     
     full_path = os.path.join(results_dir, file_name)
 
-    #Save the figure
+    # Save the figure
     plt.savefig(full_path)
     print(f"Plot saved to: {full_path}")
 
 
-#Testing generation
+# Testing generation
 if __name__ == '__main__':
-    t, y = generate_irregular(50)
-    plot_samples(t, y, title="Test", file_name="test.png")
+    t, state = generate_irregular(50)
+    plot_samples(t, state, title="Test", file_name="test.png")
