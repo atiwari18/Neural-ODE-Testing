@@ -6,45 +6,46 @@ import numpy as np
 import os
  
 class ODEFunc(nn.Module):
-    def __init__(self):
+    def __init__(self, hidden_dim=64):
         super(ODEFunc, self).__init__()
 
-        #MLP
+        # MLP that takes state [y, v] and outputs derivatives [dy/dt, dv/dt]
         self.net = nn.Sequential(
-            nn.Linear(3, 50),        #3 here because we are concatenating periodic time function. 
+            nn.Linear(2, hidden_dim),    # Input: [y, v]
             nn.Tanh(), 
-            nn.Linear(50, 1)
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.Tanh(),
+            nn.Linear(hidden_dim, 2)     # Output: [dy/dt, dv/dt]
         )
 
-    def forward(self, t, y):
-        #t is a scalar we need it to match ys shape.
-        t_vec = torch.ones_like(y) * t
-
-        #Concatenate
-        concatenated = torch.cat([y, t_vec], dim=1)
-
-        return self.net(concatenated)
+    def forward(self, t, state):
+        # state shape: [batch_size, 2] where state = [y, v]
+        # Output: [dy/dt, dv/dt]
+        # We ignore t because this is an autonomous system
+        return self.net(state)
 
     
-def train_ode(model, epochs, optimizer, criterion, t, y):
+def train_ode(model, epochs, optimizer, criterion, t, state):
     losses = []
 
-    #Training loop
+    # Training loop
     for epoch in range(epochs):
         optimizer.zero_grad()
 
-        #Integration from t_0 up to t_final, the solcer will solve at every timestamp in t_train
-        pred_y = odeint(model, y[0:1], t)
+        # Integration from t_0 up to t_final
+        pred_state = odeint(model, state[0:1], t)
 
-        loss = criterion(pred_y, y)
+        loss = criterion(pred_state, state)
         loss.backward()
         optimizer.step()
 
         losses.append(loss.item())
 
-        print(f"Epoch #{epoch} | Loss: {loss.item()}")
+        if epoch % 20 == 0:  # Print less frequently
+            print(f"Epoch #{epoch} | Loss: {loss.item():.6f}")
 
     return losses
+
 
 def plot_loss(losses):
     plt.figure(figsize=(10, 6))
@@ -64,47 +65,55 @@ def plot_loss(losses):
     
     full_path = os.path.join(results_dir, "Losses.png")
 
-    #Save the figure
     plt.savefig(full_path)
     print(f"Plot saved to: {full_path}")
 
-def extrapolate(model, t_train, y_train, device):
+
+def extrapolate(model, t_train, state_train, device):
     t_future = torch.linspace(float(t_train[-1]), 6 * torch.pi, 50).to(device)
 
     with torch.no_grad():
-        #Use last known point as the new initial condition
-        y_future = odeint(model, y_train[-1:], t_future)    #[-1:] so that the shape is (1, 1)
+        # Use last known state as the new initial condition
+        state_future = odeint(model, state_train[-1:], t_future)
 
-    return t_future, y_future
+    return t_future, state_future
 
-def plot_vector_field(model, file_name, device, t_range=(0, 6*np.pi), y_range=(-1.5, 1.5)):
-    #create a grid of points
-    t_grid = np.linspace(t_range[0], t_range[1], 20)
+
+def plot_vector_field(model, file_name, device, t_range=(0, 6*np.pi), y_range=(-1.5, 1.5), v_range=(-1.5, 1.5)):
+    """
+    For autonomous systems, we plot the phase space (y vs v), not (t vs y)
+    """
     y_grid = np.linspace(y_range[0], y_range[1], 20)
-    T, Y = np.meshgrid(t_grid, y_grid)
+    v_grid = np.linspace(v_range[0], v_range[1], 20)
+    Y, V = np.meshgrid(y_grid, v_grid)
 
-    # Calculate gradients (dy/dt) for each point in the grid
-    U = np.ones_like(T) # Time always moves forward at rate 1
-    V = np.zeros_like(Y) # This will hold our dy/dt
+    # Calculate derivatives at each point
+    dY = np.zeros_like(Y)  # dy/dt
+    dV = np.zeros_like(V)  # dv/dt
 
     model.eval()
     with torch.no_grad():
-        for i in range(len(t_grid)):
-            for j in range(len(y_grid)):
-                t_val = torch.tensor([[t_grid[i]]]).float().to(device)
-                y_val = torch.tensor([[y_grid[j]]]).float().to(device)
+        for i in range(len(y_grid)):
+            for j in range(len(v_grid)):
+                state = torch.tensor([[y_grid[i], v_grid[j]]]).float().to(device)
+                
+                # The model outputs [dy/dt, dv/dt]
+                derivatives = model(None, state)  # t is ignored
+                dY[j, i] = derivatives[0, 0].cpu().item()
+                dV[j, i] = derivatives[0, 1].cpu().item()
 
-                # The model outputs the derivative
-                dy_dt = model(t_val, y_val)
-                V[j, i] = dy_dt.item()
-
-    plt.figure(figsize=(10, 6))
-    plt.streamplot(T, Y, U, V, color=V, cmap='coolwarm')
-    plt.title("Learned Vector Field (Time vs. State)")
-    plt.xlabel("Time (t)")
-    plt.ylabel("Value (y)")
-    plt.colorbar(label='dy/dt (Slope)')
+    plt.figure(figsize=(10, 8))
+    plt.streamplot(Y, V, dY, dV, color=np.sqrt(dY**2 + dV**2), cmap='viridis')
+    plt.title("Phase Space: Learned Vector Field")
+    plt.xlabel("Position (y)")
+    plt.ylabel("Velocity (v)")
+    plt.colorbar(label='Magnitude of derivative')
     plt.grid(True, alpha=0.3)
+    
+    # Add a circle to show the true trajectory
+    theta = np.linspace(0, 2*np.pi, 100)
+    plt.plot(np.sin(theta), np.cos(theta), 'r--', alpha=0.5, label='True trajectory (circle)')
+    plt.legend()
     
     script_path = os.path.abspath(__file__)
     script_dir = os.path.dirname(script_path)
@@ -115,34 +124,35 @@ def plot_vector_field(model, file_name, device, t_range=(0, 6*np.pi), y_range=(-
     
     full_path = os.path.join(results_dir, file_name)
 
-    #Save the figure
     plt.savefig(full_path)
     print(f"Plot saved to: {full_path}")
 
-    return
 
-def plot_extrapolation(t_train, y_train, t_future, y_future, file_name, device):
-    #Generate Ground Truth for the whole range
+def plot_extrapolation(t_train, state_train, t_future, state_future, file_name):
+    # Extract positions from states
+    y_train = state_train[:, 0]
+    y_future = state_future[:, :, 0]  # Shape: [time, batch, features]
+    
+    # Generate Ground Truth for the whole range
     t_total = torch.linspace(0, 6 * np.pi, 200)
     y_total = torch.sin(t_total)
 
     plt.figure(figsize=(12, 6))
     
-    #Plot Ground Truth
+    # Plot Ground Truth
     plt.plot(t_total.numpy(), y_total.numpy(), color='gray', label='Ground Truth', linestyle='--', alpha=0.5)
     
-    #Plot Training Data
+    # Plot Training Data
     plt.scatter(t_train.cpu().numpy(), y_train.cpu().numpy(), color='red', label='Training Samples (Noisy)', s=20)
     
-    #Plot Extrapolation
-    #Note: we squeeze because odeint output is [time, batch, dim]
+    # Plot Extrapolation
     plt.plot(t_future.cpu().numpy(), y_future.detach().cpu().numpy().squeeze(), 
              color='blue', label='Neural ODE Extrapolation', linewidth=2)
 
     plt.axvline(x=t_train[-1].cpu().item(), color='black', linestyle=':', label='End of Training Data')
-    plt.title("Neural ODE: Beyond the Training Horizon")
+    plt.title("Neural ODE: Beyond the Training Horizon (State-Space)")
     plt.xlabel("Time (t)")
-    plt.ylabel("Value (y)")
+    plt.ylabel("Position (y)")
     plt.legend()
     plt.grid(True, alpha=0.3)
     
@@ -155,33 +165,58 @@ def plot_extrapolation(t_train, y_train, t_future, y_future, file_name, device):
     
     full_path = os.path.join(results_dir, file_name)
 
-    #Save the figure
     plt.savefig(full_path)
     print(f"Plot saved to: {full_path}")
 
-    return
 
-def plot_learned_dynamics_vs_true(model, device, t_train_end, t_max=30.0, n_points=500, y_dummy_value=0.0, figsize=(10, 6), file_name=None):
+def plot_learned_dynamics_vs_true(model, device, file_name, y_range=(-1.5, 1.5), n_points=30):
+    """
+    For autonomous systems, we plot learned dynamics in phase space
+    Shows: dv/dt vs y (should be -y) and dy/dt vs v (should be v)
+    """
     model.eval()
+    
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
+    
+    # Test range for position
+    y_test = np.linspace(y_range[0], y_range[1], n_points)
+    
+    # Plot 1: dv/dt vs y (should be -y)
     with torch.no_grad():
-        t_test = torch.linspace(0, t_max, n_points).unsqueeze(1).to(device)   # shape: (N, 1)
-        y_dummy = torch.full_like(t_test, y_dummy_value)
-        inputs = torch.cat([y_dummy, t_test], dim=1)
-        predicted_dydt = model.net(inputs).squeeze().cpu().numpy()
+        v_fixed = 0.0  # Fix velocity at 0
+        states = torch.tensor([[y, v_fixed] for y in y_test]).float().to(device)
+        derivatives = model(None, states).cpu().numpy()
+        dv_dt_learned = derivatives[:, 1]  # Second component is dv/dt
     
-    true_dydt = np.cos(t_test.squeeze().cpu().numpy())
+    true_dv_dt = -y_test  # True: dv/dt = -y
     
-    plt.figure(figsize=figsize)
-    plt.plot(t_test.cpu().numpy(), predicted_dydt, label='Learned dy/dt = f(y,t)', linewidth=2)
-    plt.plot(t_test.cpu().numpy(), true_dydt, '--', label='True cos(t)', linewidth=1.5)
-    plt.axvline(x=float(t_train_end), color='red', linestyle=':', 
-                label='End of training data', alpha=0.7)
+    ax1.plot(y_test, dv_dt_learned, 'b-', linewidth=2, label='Learned dv/dt')
+    ax1.plot(y_test, true_dv_dt, 'r--', linewidth=2, label='True dv/dt = -y')
+    ax1.set_xlabel('Position (y)')
+    ax1.set_ylabel('dv/dt')
+    ax1.set_title('Acceleration vs Position (v=0)')
+    ax1.legend()
+    ax1.grid(True, alpha=0.3)
     
-    plt.title("What the Neural ODE Actually Learned: dy/dt vs Time")
-    plt.xlabel("Time t")
-    plt.ylabel("dy/dt")
-    plt.legend()
-    plt.grid(True, alpha=0.3)
+    # Plot 2: dy/dt vs v (should be v)
+    with torch.no_grad():
+        y_fixed = 0.0  # Fix position at 0
+        v_test = np.linspace(y_range[0], y_range[1], n_points)
+        states = torch.tensor([[y_fixed, v] for v in v_test]).float().to(device)
+        derivatives = model(None, states).cpu().numpy()
+        dy_dt_learned = derivatives[:, 0]  # First component is dy/dt
+    
+    true_dy_dt = v_test  # True: dy/dt = v
+    
+    ax2.plot(v_test, dy_dt_learned, 'b-', linewidth=2, label='Learned dy/dt')
+    ax2.plot(v_test, true_dy_dt, 'r--', linewidth=2, label='True dy/dt = v')
+    ax2.set_xlabel('Velocity (v)')
+    ax2.set_ylabel('dy/dt')
+    ax2.set_title('Velocity Derivative (y=0)')
+    ax2.legend()
+    ax2.grid(True, alpha=0.3)
+    
+    plt.tight_layout()
     
     script_path = os.path.abspath(__file__)
     script_dir = os.path.dirname(script_path)
@@ -192,6 +227,5 @@ def plot_learned_dynamics_vs_true(model, device, t_train_end, t_max=30.0, n_poin
     
     full_path = os.path.join(results_dir, file_name)
 
-    #Save the figure
     plt.savefig(full_path)
     print(f"Plot saved to: {full_path}")

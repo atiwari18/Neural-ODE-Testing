@@ -6,32 +6,40 @@ from dataset.sine import generate_irregular
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Using device: {device}")
 
-#Load Data
+# Load Data
 print("Loading Data...")
-t_train, y_train = generate_irregular(50)
+t_train, state_train = generate_irregular(100)
 
-# Sort both t and y together
+# Sort by time and keep state aligned
 sorted_indices = torch.argsort(t_train)
 t_train = t_train[sorted_indices]
-y_train = y_train[sorted_indices]
+state_train = state_train[sorted_indices]
 
 # Move data to device
 t_train = t_train.to(device)
-y_train = y_train.to(device)
+state_train = state_train.to(device)
 print("Data Loaded!")
+print(f"State shape: {state_train.shape}")  # Should be [100, 2]
 
-#Create model, optimizer and criterion
-model = ODEFunc().to(device)
-optimizer = torch.optim.Adam(list(model.parameters()), lr=0.005)
+# Create model, optimizer and criterion
+model = ODEFunc(hidden_dim=64).to(device)
+optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
 criterion = torch.nn.MSELoss()
 
-#Training
+# Training
 print("\nTraining Neural ODE...")
-losses = train_ode(model, 100, optimizer, criterion, t_train, y_train)
+losses = train_ode(model, 200, optimizer, criterion, t_train, state_train)
 
-#Plotting loss
+# Plotting
+print("\nGenerating plots...")
 plot_loss(losses)
-t_future, y_future = extrapolate(model, t_train, y_train, device)
-plot_vector_field(model, "Vector Field for Sine Wave (100 Samples).png", device)
-plot_extrapolation(t_train, y_train, t_future, y_future, "Extrapolation for Sine Wave (100 Samples).png", device)
-plot_learned_dynamics_vs_true(model, device, t_train_end=4 * torch.pi, t_max=30.0, n_points=500, y_dummy_value=0.0, figsize=(10, 6), file_name="Learned Dynamics v True (100 Samples).png")
+
+t_future, state_future = extrapolate(model, t_train, state_train, device)
+
+plot_vector_field(model, file_name="Learned Vector Field (time agnostic).png", device=device)
+
+plot_extrapolation(t_train, state_train, t_future, state_future, 
+                   file_name="Extrapolation for Sine Wave (time agnostic).png")
+
+plot_learned_dynamics_vs_true(model, device=device, 
+                              file_name="Learned Dynamics (time agnostic).png")
