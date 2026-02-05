@@ -1,6 +1,6 @@
 import torch
 from models.neural_ode import ODEFunc, train_ode, plot_loss, extrapolate, plot_vector_field, plot_extrapolation, plot_learned_dynamics_vs_true
-from dataset.sine import generate_irregular
+from dataset.data import generate_irregular
 
 # Device setup (GPU if available, else CPU)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -28,7 +28,7 @@ criterion = torch.nn.MSELoss()
 
 # Training
 print("\nTraining Neural ODE...")
-losses = train_ode(model, 200, optimizer, criterion, t_train, state_train)
+losses = train_ode(model, 100, optimizer, criterion, t_train, state_train)
 
 # Plotting
 print("\nGenerating plots...")
@@ -36,10 +36,8 @@ plot_loss(losses)
 
 t_future, state_future = extrapolate(model, t_train, state_train, device)
 
-plot_vector_field(model, file_name="Learned Vector Field (time agnostic).png", device=device)
+plot_vector_field(model, file_name="Learned Vector Field (time agnostic-2nd-run).png", device=device)
 
-plot_extrapolation(t_train, state_train, t_future, state_future, 
-                   file_name="Extrapolation for Sine Wave (time agnostic).png")
+plot_extrapolation(t_train, state_train, t_future, state_future, "Extrapolation for Sine Wave (time agnostic-2nd-run).png", model, device)
 
-plot_learned_dynamics_vs_true(model, device=device, 
-                              file_name="Learned Dynamics (time agnostic).png")
+plot_learned_dynamics_vs_true(model, device=device, file_name="Learned Dynamics (time agnostic-2nd-run).png")

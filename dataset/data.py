@@ -24,6 +24,20 @@ def generate_irregular(n_samples, t_max=4*np.pi):
 
     return t_tensor, state_tensor
 
+def generate_spiral(n_samples, t_max=100):
+    #timepoint
+    t = np.linspace(0, t_max, n_samples)
+
+    #Generate spiral
+    x = np.sin(t) * np.exp(-0.1 * t)
+    y = np.cos(t) * np.exp(-0.1 * t)
+
+    #add noise
+    x += np.random.normal(0, 0.01, size=t.shape)
+    y += np.random.normal(0, 0.01, size=t.shape)
+
+    return np.stack([x, y], axis=1)
+
 
 def plot_samples(t, state, title, file_name):
     # Extract position from state
@@ -59,8 +73,35 @@ def plot_samples(t, state, title, file_name):
     plt.savefig(full_path)
     print(f"Plot saved to: {full_path}")
 
+def plot(data, file_name="Sprial_Data.png", fig_size=(8, 8)):
+    plt.figure(figsize=fig_size)
+    plt.plot(data[:, 0], data[:, 1], label="Spiral Trajectory", color="red")
+    plt.title("Generated Spiral Data")
+    plt.xlabel("X")
+    plt.ylabel("Y")
+    plt.legend()
+    plt.grid()
+
+    script_path = os.path.abspath(__file__)
+    script_dir = os.path.dirname(script_path)
+    project_root = os.path.dirname(script_dir)
+    
+    results_dir = os.path.join(project_root, 'Results')
+    os.makedirs(results_dir, exist_ok=True)
+    
+    full_path = os.path.join(results_dir, file_name)
+
+    # Save the figure
+    plt.savefig(full_path)
+    print(f"Plot saved to: {full_path}")
+
+
+
 
 # Testing generation
 if __name__ == '__main__':
-    t, state = generate_irregular(50)
-    plot_samples(t, state, title="Test", file_name="test.png")
+    #t, state = generate_irregular(50)
+    #plot_samples(t, state, title="Test", file_name="test.png")
+
+    data = generate_spiral(100, t_max=10)
+    plot(data)
