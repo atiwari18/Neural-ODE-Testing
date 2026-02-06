@@ -36,7 +36,10 @@ def generate_spiral(n_samples, t_max=100):
     x += np.random.normal(0, 0.01, size=t.shape)
     y += np.random.normal(0, 0.01, size=t.shape)
 
-    return np.stack([x, y], axis=1)
+    data = np.stack([x, y], axis=1)
+    data = torch.tensor(data).float()
+
+    return data
 
 
 def plot_samples(t, state, title, file_name):
@@ -73,9 +76,17 @@ def plot_samples(t, state, title, file_name):
     plt.savefig(full_path)
     print(f"Plot saved to: {full_path}")
 
-def plot(data, file_name="Sprial_Data.png", fig_size=(8, 8)):
+def plot(data, t_max, file_name="Sprial_Data.png", fig_size=(8, 8)):
+    # Generate a smooth line for sine wave
+    t_smooth = np.linspace(0, t_max, 200)
+    x_true = np.sin(t_smooth) * np.exp(-0.1 * t_smooth)
+    y_true = np.cos(t_smooth) * np.exp(-0.1 * t_smooth)
+    data_true = np.stack([x_true, y_true], axis=1)
+
+
     plt.figure(figsize=fig_size)
-    plt.plot(data[:, 0], data[:, 1], label="Spiral Trajectory", color="red")
+    plt.plot(data_true[:, 0], data_true[:, 1], label="True Function", color="red", linestyle="--", alpha=0.6)
+    plt.scatter(data[:, 0], data[:, 1], label="Spiral Trajectory", color="blue", s=16)
     plt.title("Generated Spiral Data")
     plt.xlabel("X")
     plt.ylabel("Y")
@@ -104,4 +115,4 @@ if __name__ == '__main__':
     #plot_samples(t, state, title="Test", file_name="test.png")
 
     data = generate_spiral(100, t_max=10)
-    plot(data)
+    plot(data, t_max=10)

@@ -47,7 +47,7 @@ def train_ode(model, epochs, optimizer, criterion, t, state):
     return losses
 
 
-def plot_loss(losses):
+def plot_loss(losses, file_name):
     plt.figure(figsize=(10, 6))
     plt.plot(losses, label='Training Loss')
     plt.title('Training Loss Over Epochs')
@@ -63,14 +63,14 @@ def plot_loss(losses):
     results_dir = os.path.join(project_root, 'Results')
     os.makedirs(results_dir, exist_ok=True)
     
-    full_path = os.path.join(results_dir, "Losses.png")
+    full_path = os.path.join(results_dir, file_name)
 
     plt.savefig(full_path)
     print(f"Plot saved to: {full_path}")
 
 
-def extrapolate(model, t_train, state_train, device):
-    t_future = torch.linspace(float(t_train[-1]), 6 * torch.pi, 50).to(device)
+def extrapolate(model, t_train, state_train, device, t_max=6*torch.pi):
+    t_future = torch.linspace(float(t_train[-1]), t_max, 100).to(device)
 
     with torch.no_grad():
         # Use last known state as the new initial condition
@@ -243,3 +243,54 @@ def plot_learned_dynamics_vs_true(model, device, file_name, y_range=(-1.5, 1.5),
 
     plt.savefig(full_path)
     print(f"Plot saved to: {full_path}")
+
+#Plot spiral extrapolation
+def plot_spiral_extrapolation(t_train, state_train, state_future, file_name):
+    # Extract coordinates
+    x_train = state_train[:, 0].cpu().numpy()
+    y_train = state_train[:, 1].cpu().numpy()
+    
+    x_future = state_future[:, 0, 0].cpu().numpy()
+    y_future = state_future[:, 0, 1].cpu().numpy()
+    
+    # Generate ground truth
+    t_gt = t_train.cpu().numpy()
+    x_gt = np.sin(t_gt) * np.exp(-0.1 * t_gt)
+    y_gt = np.cos(t_gt) * np.exp(-0.1 * t_gt)
+    
+    plt.figure(figsize=(10, 10))
+    
+    # Ground truth
+    plt.plot(x_gt, y_gt, 'gray', linestyle='--', alpha=0.4, linewidth=2, label='Ground Truth')
+    
+    # Training data points
+    plt.scatter(x_train, y_train, c='red', s=40, alpha=0.7, zorder=5, label='Training Data')
+    
+    # Training region trajectory
+    plt.plot(x_train, y_train, 'green', linewidth=3, alpha=0.9, label='Training Region')
+    
+    # Extrapolation
+    plt.plot(x_future, y_future, 'blue', linewidth=3, label='Extrapolation')
+    
+    # Markers
+    plt.scatter([x_train[0]], [y_train[0]], c='green', s=150, marker='o', 
+               edgecolors='black', linewidth=2, label='Start', zorder=10)
+    plt.scatter([x_train[-1]], [y_train[-1]], c='orange', s=150, marker='s', 
+               edgecolors='black', linewidth=2, label='End of Training', zorder=10)
+    
+    plt.title("Neural ODE: Spiral Extrapolation", fontsize=14, fontweight='bold')
+    plt.xlabel("x", fontsize=12)
+    plt.ylabel("y", fontsize=12)
+    plt.legend(fontsize=10)
+    plt.grid(True, alpha=0.3)
+    plt.axis('equal')
+    
+    # Save
+    script_path = os.path.abspath(__file__)
+    script_dir = os.path.dirname(script_path)
+    project_root = os.path.dirname(script_dir)
+    results_dir = os.path.join(project_root, 'Results')
+    os.makedirs(results_dir, exist_ok=True)
+    
+    plt.savefig(os.path.join(results_dir, file_name), dpi=150, bbox_inches='tight')
+    print(f"Plot saved to: {os.path.join(results_dir, file_name)}")
