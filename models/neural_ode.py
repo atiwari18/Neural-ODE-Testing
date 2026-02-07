@@ -11,18 +11,18 @@ class ODEFunc(nn.Module):
 
         # MLP that takes state [y, v] and outputs derivatives [dy/dt, dv/dt]
         self.net = nn.Sequential(
-            nn.Linear(2, hidden_dim),    # Input: [y, v]
+            nn.Linear(3, hidden_dim),    
             nn.Tanh(), 
             nn.Linear(hidden_dim, hidden_dim),
             nn.Tanh(),
-            nn.Linear(hidden_dim, 2)     # Output: [dy/dt, dv/dt]
+            nn.Linear(hidden_dim, 2)     
         )
 
     def forward(self, t, state):
-        # state shape: [batch_size, 2] where state = [y, v]
-        # Output: [dy/dt, dv/dt]
-        # We ignore t because this is an autonomous system
-        return self.net(state)
+        #concatenate time with state
+        t_vec = torch.ones(state.shape[0], 1).to(state.device) * t
+        aug_state = torch.cat([state, t_vec], dim=1)
+        return self.net(aug_state)
 
     
 def train_ode(model, epochs, optimizer, criterion, t, state):

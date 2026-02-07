@@ -35,13 +35,13 @@ criterion = torch.nn.MSELoss()
 
 # Training
 print("\nTraining Neural ODE...")
-losses = train_ode(model, 5, optimizer, criterion, t, data)
+losses = train_ode(model, 100, optimizer, criterion, t, data)
 
 # Plotting
 print("\nGenerating plots...")
-plot_loss(losses, file_name="Losses (spiral-dataset).png")
+plot_loss(losses, file_name="Losses (spiral-time-conditioned).png")
 
-t_future, state_future = extrapolate(model, t, data, device)
+t_future, state_future = extrapolate(model, t, data, device, t_max=20)
 
 #plot_vector_field(model, file_name="Learned Vector Field (spiral-dataset).png", device=device)
 
@@ -49,4 +49,4 @@ t_future, state_future = extrapolate(model, t, data, device)
 
 #plot_learned_dynamics_vs_true(model, device=device, file_name="Learned Dynamics (spiral-dataset).png")
 
-plot_spiral_extrapolation(t, data, state_future, file_name="Spiral Extrapolation.png")
+plot_spiral_extrapolation(t, data, state_future, file_name="Spiral Extrapolation (spiral-time-conditioned).png")

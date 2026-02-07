@@ -29,8 +29,8 @@ def generate_spiral(n_samples, t_max=100):
     t = np.linspace(0, t_max, n_samples)
 
     #Generate spiral
-    x = np.sin(t) * np.exp(-0.1 * t)
-    y = np.cos(t) * np.exp(-0.1 * t)
+    x = np.sin(t) #* np.exp(-0.1 * t)
+    y = np.cos(t) #* np.exp(-0.1 * t)
 
     #add noise
     x += np.random.normal(0, 0.01, size=t.shape)
