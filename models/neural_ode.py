@@ -6,17 +6,27 @@ import numpy as np
 import os
  
 class ODEFunc(nn.Module):
-    def __init__(self, hidden_dim=64):
+    def __init__(self, input_dim=2, hidden_dim=64, time_invariant=False):
         super(ODEFunc, self).__init__()
+        self.time_invariant = time_invariant
 
         #MLP for ODE
-        self.net = nn.Sequential(
-            nn.Linear(2, hidden_dim),    
-            nn.Tanh(), 
-            nn.Linear(hidden_dim, hidden_dim),
-            nn.Tanh(),
-            nn.Linear(hidden_dim, 2)     
-        )
+        if time_invariant:
+            self.net = nn.Sequential(
+                nn.Linear(input_dim, hidden_dim),    
+                nn.Tanh(), 
+                nn.Linear(hidden_dim, hidden_dim),
+                nn.Tanh(),
+                nn.Linear(hidden_dim, input_dim)     
+            )
+        else:
+            self.net = nn.Sequential(
+                nn.Linear(input_dim + 1, hidden_dim),    
+                nn.Tanh(), 
+                nn.Linear(hidden_dim, hidden_dim),
+                nn.Tanh(),
+                nn.Linear(hidden_dim, input_dim + 1)     
+            )
 
         #weight and bias initialization from https://github.com/rtqichen/torchdiffeq
         for m in self.net.modules():
@@ -25,7 +35,10 @@ class ODEFunc(nn.Module):
                 nn.init.constant_(m.bias, val=0)
 
     def forward(self, t, state):
-        #concatenate time with state
+        #time invariant behavior
+        if not self.time_invariant:
+            state = torch.cat((state, t), dim=1)
+        
         return self.net(state)
 
     

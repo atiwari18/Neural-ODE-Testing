@@ -1,7 +1,9 @@
 import numpy as np 
 import matplotlib.pyplot as plt
 import torch
+import torch.nn as nn
 import os
+from torchdiffeq import odeint_adjoint as odeint
 
 def generate_irregular(n_samples, t_max=4*np.pi):
     t = np.sort(np.random.rand(n_samples) * t_max)
@@ -24,22 +26,36 @@ def generate_irregular(n_samples, t_max=4*np.pi):
 
     return t_tensor, state_tensor
 
-def generate_spiral(n_samples, t_max=100):
-    #timepoint
-    t = np.linspace(0, t_max, n_samples)
+#True sprial dynamics
+class SpiralDynamics(nn.Module):
+    def __init__(self):
+        super(SpiralDynamics, self).__init__()
 
-    #Generate spiral
-    x = np.sin(t) * np.exp(-0.1 * t)
-    y = np.cos(t) * np.exp(-0.1 * t)
+        #weight matrix for spiral
+        self.A = torch.tensor([[-0.1, -1.0], 
+                               [1.0, -0.1]], dtype=torch.float32)
+        
+    def forward(self, t, y):
+        return torch.mm(y, self.A.T)
 
-    #add noise
-    x += np.random.normal(0, 0.01, size=t.shape)
-    y += np.random.normal(0, 0.01, size=t.shape)
-
-    data = np.stack([x, y], axis=1)
-    data = torch.tensor(data).float()
-
-    return data
+def generate_spiral(true_func, batch_size=32, n_samples=100, t_max=10, device="cpu"):
+    #time
+    t = torch.linspace(0, t_max, n_samples).to(device)
+    
+    #Initial conditions: random points on a circle
+    theta = torch.rand(batch_size) * 2 * np.pi
+    radius = 2.0
+    y0 = torch.stack([
+        radius * torch.cos(theta),
+        radius * torch.sin(theta)
+    ], dim=1).to(device)  # [batch_size, 2]
+    
+    #Solve ODE with true dynamics
+    with torch.no_grad():
+        true_trajectories = odeint(true_func, y0, t, method='dopri5')
+        #Shape: [n_points, batch_size, 2]
+    
+    return t, y0, true_trajectories
 
 
 def plot_samples(t, state, title, file_name):
@@ -76,22 +92,45 @@ def plot_samples(t, state, title, file_name):
     plt.savefig(full_path)
     print(f"Plot saved to: {full_path}")
 
-def plot(data, t_max, file_name="Sprial_Data.png", fig_size=(8, 8)):
-    # Generate a smooth line for sine wave
-    t_smooth = np.linspace(0, t_max, 200)
-    x_true = np.sin(t_smooth) * np.exp(-0.1 * t_smooth)
-    y_true = np.cos(t_smooth) * np.exp(-0.1 * t_smooth)
-    data_true = np.stack([x_true, y_true], axis=1)
-
-
-    plt.figure(figsize=fig_size)
-    plt.plot(data_true[:, 0], data_true[:, 1], label="True Function", color="red", linestyle="--", alpha=0.6)
-    plt.scatter(data[:, 0], data[:, 1], label="Spiral Trajectory", color="blue", s=16)
-    plt.title("Generated Spiral Data")
-    plt.xlabel("X")
-    plt.ylabel("Y")
-    plt.legend()
-    plt.grid()
+def plot(t, y0, trajectories, title="Spiral Trajectories", file_name="trajectories.png"):
+    # Move to CPU and convert to numpy for plotting
+    t_np = t.cpu().numpy()
+    y0_np = y0.cpu().numpy()
+    traj_np = trajectories.cpu().numpy()
+    
+    batch_size = y0_np.shape[0]
+    
+    plt.figure(figsize=(10, 10))
+    
+    # Plot each trajectory
+    for i in range(batch_size):
+        traj = traj_np[:, i, :]  # [n_points, 2]
+        
+        # Plot trajectory
+        plt.plot(traj[:, 0], traj[:, 1], '-', alpha=0.6, linewidth=1.5)
+        
+        # Mark starting point
+        plt.scatter(y0_np[i, 0], y0_np[i, 1], c='green', s=100, 
+                   marker='o', zorder=5, edgecolors='black', linewidths=1)
+        
+        # Mark ending point
+        plt.scatter(traj[-1, 0], traj[-1, 1], c='red', s=100, 
+                   marker='x', zorder=5, linewidths=2)
+    
+    plt.title(title, fontsize=14)
+    plt.xlabel("x", fontsize=12)
+    plt.ylabel("y", fontsize=12)
+    plt.grid(True, alpha=0.3)
+    plt.axis('equal')
+    
+    # Add legend
+    plt.scatter([], [], c='green', s=100, marker='o', 
+               edgecolors='black', linewidths=1, label='Start')
+    plt.scatter([], [], c='red', s=100, marker='x', 
+               linewidths=2, label='End')
+    plt.legend(loc='best')
+    
+    plt.tight_layout()
 
     script_path = os.path.abspath(__file__)
     script_dir = os.path.dirname(script_path)
@@ -114,5 +153,6 @@ if __name__ == '__main__':
     #t, state = generate_irregular(50)
     #plot_samples(t, state, title="Test", file_name="test.png")
 
-    data = generate_spiral(200, t_max=6.29*5)
-    plot(data, t_max=6.29*5)
+    true_func = SpiralDynamics()
+    t, y0, true_traj = generate_spiral(true_func, batch_size=8, n_samples=100)
+    plot(t, y0, true_traj, title="True Spiral Dynamics", file_name="true_spirals.png")
