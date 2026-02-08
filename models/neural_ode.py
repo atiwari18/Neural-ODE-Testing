@@ -294,3 +294,77 @@ def plot_spiral_extrapolation(t_train, state_train, state_future, file_name):
     
     plt.savefig(os.path.join(results_dir, file_name), dpi=150, bbox_inches='tight')
     print(f"Plot saved to: {os.path.join(results_dir, file_name)}")
+
+
+def evaluate_on_holdout(model, criterion, t_test, data_test):
+    """
+    Evaluate the trained model on a hold-out test set.
+    Uses the initial condition from test data and integrates through test timepoints.
+    """
+    model.eval()
+    with torch.no_grad():
+        # Integrate from first test point through all test timepoints
+        pred_state = odeint(model, data_test[0:1], t_test)
+        loss = criterion(pred_state, data_test)
+    return loss.item()
+
+def plot_train_test_comparison(model, t_train, data_train, t_test, data_test, t_max, device, file_name):
+    model.eval()
+    
+    # Generate predictions on a dense grid for smooth visualization
+    t_dense = torch.linspace(0, t_max, 500).to(device)
+    
+    with torch.no_grad():
+        pred_dense = odeint(model, data_train[0:1], t_dense)
+    
+    # Extract coordinates
+    x_train = data_train[:, 0].cpu().numpy()
+    y_train = data_train[:, 1].cpu().numpy()
+    
+    x_test = data_test[:, 0].cpu().numpy()
+    y_test = data_test[:, 1].cpu().numpy()
+    
+    x_pred = pred_dense[:, 0, 0].cpu().numpy()
+    y_pred = pred_dense[:, 0, 1].cpu().numpy()
+    
+    # Generate ground truth
+    t_gt = torch.linspace(0, t_max, 500).cpu().numpy()
+    x_gt = np.sin(t_gt) * np.exp(-0.1 * t_gt)
+    y_gt = np.cos(t_gt) * np.exp(-0.1 * t_gt)
+    
+    plt.figure(figsize=(12, 12))
+    
+    # Ground truth (dashed gray)
+    plt.plot(x_gt, y_gt, 'gray', linestyle='--', alpha=0.4, linewidth=2, label='Ground Truth')
+    
+    # Model prediction (smooth line)
+    plt.plot(x_pred, y_pred, 'green', linewidth=2.5, alpha=0.8, label='Model Prediction')
+    
+    # Training data points (blue)
+    plt.scatter(x_train, y_train, c='blue', s=50, alpha=0.7, zorder=5, 
+               edgecolors='navy', linewidth=0.5, label=f'Train Data (n={len(x_train)})')
+    
+    # Test/hold-out data points (red)
+    plt.scatter(x_test, y_test, c='red', s=50, alpha=0.7, zorder=5, 
+               edgecolors='darkred', linewidth=0.5, label=f'Test Data (n={len(x_test)})')
+    
+    # Start marker
+    plt.scatter([x_train[0]], [y_train[0]], c='green', s=200, marker='o', 
+               edgecolors='black', linewidth=2, label='Start', zorder=10)
+    
+    plt.title("Neural ODE: Train vs Test Performance", fontsize=14, fontweight='bold')
+    plt.xlabel("x", fontsize=12)
+    plt.ylabel("y", fontsize=12)
+    plt.legend(fontsize=10, loc='upper right')
+    plt.grid(True, alpha=0.3)
+    plt.axis('equal')
+    
+    # Save
+    script_path = os.path.abspath(__file__)
+    script_dir = os.path.dirname(script_path)
+    project_root = os.path.dirname(script_dir)
+    results_dir = os.path.join(project_root, 'Results')
+    os.makedirs(results_dir, exist_ok=True)
+    
+    plt.savefig(os.path.join(results_dir, file_name), dpi=150, bbox_inches='tight')
+    print(f"Plot saved to: {os.path.join(results_dir, file_name)}")
