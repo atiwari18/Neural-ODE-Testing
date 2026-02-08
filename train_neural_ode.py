@@ -9,7 +9,7 @@ print(f"Using device: {device}")
 # Load Data
 print("Loading Data...")
 #t_train, state_train = generate_irregular(100)
-data = generate_spiral(100, t_max=10)
+data = generate_spiral(500, t_max=10)
 y0 = torch.tensor([1.0, 0.0])
 t = torch.linspace(0, 10, 100)
 
@@ -30,16 +30,16 @@ print(f"State shape: y{y0.shape}")  # Should be [100, 2]
 
 # Create model, optimizer and criterion
 model = ODEFunc(hidden_dim=64).to(device)
-optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
+optimizer = torch.optim.Adam(model.parameters(), lr=0.005)
 criterion = torch.nn.MSELoss()
 
 # Training
 print("\nTraining Neural ODE...")
-losses = train_ode(model, 100, optimizer, criterion, t, data)
+losses = train_ode(model, 250, optimizer, criterion, t, data)
 
 # Plotting
 print("\nGenerating plots...")
-plot_loss(losses, file_name="Losses (spiral-time-conditioned).png")
+plot_loss(losses, file_name="Losses (spiral-time-conditioned-500).png")
 
 t_future, state_future = extrapolate(model, t, data, device, t_max=20)
 
@@ -49,4 +49,4 @@ t_future, state_future = extrapolate(model, t, data, device, t_max=20)
 
 #plot_learned_dynamics_vs_true(model, device=device, file_name="Learned Dynamics (spiral-dataset).png")
 
-plot_spiral_extrapolation(t, data, state_future, file_name="Spiral Extrapolation (spiral-time-conditioned).png")
+plot_spiral_extrapolation(t, data, state_future, file_name="Spiral Extrapolation (spiral-time-conditioned-500).png")
