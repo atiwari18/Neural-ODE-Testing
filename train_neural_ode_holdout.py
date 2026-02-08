@@ -3,13 +3,13 @@ from models.neural_ode import ODEFunc, train_ode, plot_loss, extrapolate, plot_s
 from dataset.data import generate_spiral
 
 #device
-device = torch.device("cuda" if torch.is_available() else "cpu")
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Using: {device}")
 
 # Load Data
 print("Loading Data...")
 # Generate full dataset
-n_samples = 500
+n_samples = 50
 t_max = 20.0
 data_full = generate_spiral(n_samples, t_max=t_max)
 t_full = torch.linspace(0, t_max, n_samples)
@@ -54,7 +54,7 @@ criterion = torch.nn.MSELoss()
 
 # Training
 print("\nTraining Neural ODE...")
-losses = train_ode(model, 250, optimizer, criterion, t_train, data_train)
+losses = train_ode(model, 100, optimizer, criterion, t_train, data_train)
 
 # Evaluate on hold-out test set
 print("\nEvaluating on hold-out test set...")
@@ -64,7 +64,7 @@ print(f"Final Train Loss: {losses[-1]:.6f}")
 
 # Plotting
 print("\nGenerating plots...")
-plot_loss(losses, file_name="Losses_with_holdout.png")
+plot_loss(losses, file_name="Losses_with_holdout (on holdout #1).png")
 
 # Plot train vs test comparison
 plot_train_test_comparison(
