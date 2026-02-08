@@ -37,12 +37,18 @@ class ODEFunc(nn.Module):
     def forward(self, t, state):
         #time invariant behavior
         if not self.time_invariant:
-            state = torch.cat((state, t), dim=1)
+            #batch_size
+            batch = state.shape[0]
+
+            #expand t to match batch_size [] --> [batch_size, 1]
+            t_expanded = t.expand(batch, 1)
+
+            state = torch.cat((state, t_expanded), dim=1)
         
         return self.net(state)
 
     
-def train_ode(model, epochs, optimizer, criterion, t, state):
+def train_ode(model, epochs, optimizer, criterion, true_traj, t, y0):
     losses = []
 
     # Training loop
@@ -50,16 +56,17 @@ def train_ode(model, epochs, optimizer, criterion, t, state):
         optimizer.zero_grad()
 
         # Integration from t_0 up to t_final
-        pred_state = odeint(model, state[0:1], t)
+        #[n_samples, batch_size, 2]
+        pred_state = odeint(model, y0, t, method='dopri5')
 
-        loss = criterion(pred_state, state)
+        loss = criterion(pred_state, true_traj)
         loss.backward()
         optimizer.step()
 
         losses.append(loss.item())
 
-        if epoch % 20 == 0:  # Print less frequently
-            print(f"Epoch #{epoch} | Loss: {loss.item():.6f}")
+        if (epoch + 1) % 10 == 0:
+            print(f"Epoch {epoch+1}/{epochs} | Loss: {loss.item():.6f}")
 
     return losses
 
@@ -262,23 +269,35 @@ def plot_learned_dynamics_vs_true(model, device, file_name, y_range=(-1.5, 1.5),
     print(f"Plot saved to: {full_path}")
 
 #Plot spiral extrapolation
-def plot_spiral_extrapolation(t_train, state_train, state_future, file_name=None, model=None, device=None):
+def plot_spiral_extrapolation(t_train, state_train, state_future, true_func=None, file_name=None, model=None, device=None):
     # Extract coordinates
     x_train = state_train[:, 0].cpu().numpy()
     y_train = state_train[:, 1].cpu().numpy()
+    y0_train = state_train[0:1, :].to(device)
     
     x_future = state_future[:, 0, 0].cpu().numpy()
     y_future = state_future[:, 0, 1].cpu().numpy()
     
-    # Generate ground truth
-    t_gt = t_train.cpu().numpy()
-    x_gt = np.sin(t_gt) * np.exp(-0.1 * t_gt)
-    y_gt = np.cos(t_gt) * np.exp(-0.1 * t_gt)
-    
     plt.figure(figsize=(10, 10))
-    
-    # Ground truth
-    plt.plot(x_gt, y_gt, 'gray', linestyle='--', alpha=0.4, linewidth=2, label='Ground Truth')
+
+    # Generate TRUE ground truth using the ODE solver
+    if true_func is not None and device is not None:
+        with torch.no_grad():
+            # Create dense time points for smooth ground truth
+            t_train_min = t_train[0].item()
+            t_train_max = t_train[-1].item()
+            t_gt_dense = torch.linspace(t_train_min, t_train_max, 300).to(device)
+            
+            # Solve TRUE dynamics
+            state_gt = odeint(true_func, y0_train, t_gt_dense)
+            
+            # Extract coordinates
+            x_gt = state_gt[:, 0, 0].cpu().numpy()
+            y_gt = state_gt[:, 0, 1].cpu().numpy()
+            
+            # Plot ground truth
+            plt.plot(x_gt, y_gt, 'gray', linestyle='--', alpha=0.5, 
+                    linewidth=2.5, label='True Dynamics (Ground Truth)')
 
     #if model is provided, compute the learned trajectory through the trainin region.
     if model is not None and device is not None:
@@ -344,56 +363,42 @@ def evaluate_on_holdout(model, criterion, t_test, data_test):
         loss = criterion(pred_state, data_test)
     return loss.item()
 
-def plot_train_test_comparison(model, t_train, data_train, t_test, data_test, t_max, device, file_name):
-    model.eval()
+def plot_comparison(true_func, learned_func, device, file_name="True vs. Learned Dynamics.png", n_trajectories=5):
+    """Compare true vs learned dynamics"""
     
-    # Generate predictions on a dense grid for smooth visualization
-    t_dense = torch.linspace(0, t_max, 500).to(device)
+    fig, axes = plt.subplots(1, 2, figsize=(14, 6))
     
+    # Generate test initial conditions
+    theta = torch.linspace(0, 2*np.pi, n_trajectories+1)[:-1]
+    y0 = torch.stack([
+        2.0 * torch.cos(theta),
+        2.0 * torch.sin(theta)
+    ], dim=1).to(device)
+    
+    t = torch.linspace(0, 25, 200).to(device)
+    
+    # True dynamics
     with torch.no_grad():
-        pred_dense = odeint(model, data_train[0:1], t_dense)
+        true_traj = odeint(true_func, y0, t, method='dopri5')
+        pred_traj = odeint(learned_func, y0, t, method='dopri5')
     
-    # Extract coordinates
-    x_train = data_train[:, 0].cpu().numpy()
-    y_train = data_train[:, 1].cpu().numpy()
+    # Plot true spirals
+    for i in range(n_trajectories):
+        traj = true_traj[:, i, :].cpu().numpy()
+        axes[0].plot(traj[:, 0], traj[:, 1], 'b-', alpha=0.6)
+        axes[0].scatter(traj[0, 0], traj[0, 1], c='green', s=50, zorder=5)
     
-    x_test = data_test[:, 0].cpu().numpy()
-    y_test = data_test[:, 1].cpu().numpy()
+    axes[0].set_title("True Dynamics")
+    axes[0].set_xlabel("x")
+    axes[0].set_ylabel("y")
+    axes[0].grid(True, alpha=0.3)
+    axes[0].axis('equal')
     
-    x_pred = pred_dense[:, 0, 0].cpu().numpy()
-    y_pred = pred_dense[:, 0, 1].cpu().numpy()
-    
-    # Generate ground truth
-    t_gt = torch.linspace(0, t_max, 500).cpu().numpy()
-    x_gt = np.sin(t_gt) * np.exp(-0.1 * t_gt)
-    y_gt = np.cos(t_gt) * np.exp(-0.1 * t_gt)
-    
-    plt.figure(figsize=(12, 12))
-    
-    # Ground truth (dashed gray)
-    plt.plot(x_gt, y_gt, 'gray', linestyle='--', alpha=0.4, linewidth=2, label='Ground Truth')
-    
-    # Model prediction (smooth line)
-    plt.plot(x_pred, y_pred, 'green', linewidth=1.5, alpha=0.8, label='Model Prediction')
-    
-    # Training data points (blue)
-    plt.scatter(x_train, y_train, c='blue', s=50, alpha=0.7, zorder=5, 
-               edgecolors='navy', linewidth=0.5, label=f'Train Data (n={len(x_train)})')
-    
-    # Test/hold-out data points (red)
-    plt.scatter(x_test, y_test, c='red', s=50, alpha=0.7, zorder=5, 
-               edgecolors='darkred', linewidth=0.5, label=f'Test Data (n={len(x_test)})')
-    
-    # Start marker
-    plt.scatter([x_train[0]], [y_train[0]], c='green', s=100, marker='o', 
-               edgecolors='black', linewidth=2, label='Start', zorder=10)
-    
-    plt.title("Neural ODE: Train vs Test Performance", fontsize=14, fontweight='bold')
-    plt.xlabel("x", fontsize=12)
-    plt.ylabel("y", fontsize=12)
-    plt.legend(fontsize=10, loc='upper right')
-    plt.grid(True, alpha=0.3)
-    plt.axis('equal')
+    # Plot learned spirals
+    for i in range(n_trajectories):
+        traj = pred_traj[:, i, :].cpu().numpy()
+        axes[1].plot(traj[:, 0], traj[:, 1], 'r-', alpha=0.6)
+        axes[1].scatter(traj[0, 0], traj[0, 1], c='green', s=50, zorder=5)
     
     # Save
     script_path = os.path.abspath(__file__)

@@ -28,12 +28,12 @@ def generate_irregular(n_samples, t_max=4*np.pi):
 
 #True sprial dynamics
 class SpiralDynamics(nn.Module):
-    def __init__(self):
+    def __init__(self, device="cpu"):
         super(SpiralDynamics, self).__init__()
 
         #weight matrix for spiral
         self.A = torch.tensor([[-0.1, -1.0], 
-                               [1.0, -0.1]], dtype=torch.float32)
+                               [1.0, -0.1]], dtype=torch.float32, device=device)
         
     def forward(self, t, y):
         return torch.mm(y, self.A.T)
