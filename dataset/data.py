@@ -114,5 +114,5 @@ if __name__ == '__main__':
     #t, state = generate_irregular(50)
     #plot_samples(t, state, title="Test", file_name="test.png")
 
-    data = generate_spiral(100, t_max=10)
-    plot(data, t_max=10)
+    data = generate_spiral(200, t_max=6.29*5)
+    plot(data, t_max=6.29*5)

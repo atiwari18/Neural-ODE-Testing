@@ -9,8 +9,8 @@ print(f"Using: {device}")
 # Load Data
 print("Loading Data...")
 # Generate full dataset
-n_samples = 50
-t_max = 20.0
+n_samples = 200
+t_max = 6.29*5
 data_full = generate_spiral(n_samples, t_max=t_max)
 t_full = torch.linspace(0, t_max, n_samples)
 
@@ -64,7 +64,7 @@ print(f"Final Train Loss: {losses[-1]:.6f}")
 
 # Plotting
 print("\nGenerating plots...")
-plot_loss(losses, file_name="Losses_with_holdout (on holdout #1).png")
+plot_loss(losses, file_name="Losses_with_holdout (small-run-100-epochs).png")
 
 # Plot train vs test comparison
 plot_train_test_comparison(
@@ -73,7 +73,7 @@ plot_train_test_comparison(
     t_test, data_test, 
     t_max, 
     device,
-    file_name="Train_Test_Comparison (on holdout #1).png"
+    file_name="Train_Test_Comparison (small-run-100-epochs).png"
 )
 
 # Extrapolation beyond training range
@@ -83,5 +83,7 @@ plot_spiral_extrapolation(
     t_train, 
     data_train, 
     state_future, 
-    file_name="Spiral_Extrapolation_with_holdout (on holdout #1).png"
+    file_name="Spiral_Extrapolation_with_holdout (small-run-100-epochs).png", 
+    model=model, 
+    device = device
 )

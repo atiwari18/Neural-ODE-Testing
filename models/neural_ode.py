@@ -9,20 +9,24 @@ class ODEFunc(nn.Module):
     def __init__(self, hidden_dim=64):
         super(ODEFunc, self).__init__()
 
-        # MLP that takes state [y, v] and outputs derivatives [dy/dt, dv/dt]
+        #MLP for ODE
         self.net = nn.Sequential(
-            nn.Linear(3, hidden_dim),    
+            nn.Linear(2, hidden_dim),    
             nn.Tanh(), 
             nn.Linear(hidden_dim, hidden_dim),
             nn.Tanh(),
             nn.Linear(hidden_dim, 2)     
         )
 
+        #weight and bias initialization from https://github.com/rtqichen/torchdiffeq
+        for m in self.net.modules():
+            if isinstance(m, nn.Linear):
+                nn.init.normal_(m.weight, mean=0, std=0.1)
+                nn.init.constant_(m.bias, val=0)
+
     def forward(self, t, state):
         #concatenate time with state
-        t_vec = torch.ones(state.shape[0], 1).to(state.device) * t
-        aug_state = torch.cat([state, t_vec], dim=1)
-        return self.net(aug_state)
+        return self.net(state)
 
     
 def train_ode(model, epochs, optimizer, criterion, t, state):
@@ -245,7 +249,7 @@ def plot_learned_dynamics_vs_true(model, device, file_name, y_range=(-1.5, 1.5),
     print(f"Plot saved to: {full_path}")
 
 #Plot spiral extrapolation
-def plot_spiral_extrapolation(t_train, state_train, state_future, file_name):
+def plot_spiral_extrapolation(t_train, state_train, state_future, file_name=None, model=None, device=None):
     # Extract coordinates
     x_train = state_train[:, 0].cpu().numpy()
     y_train = state_train[:, 1].cpu().numpy()
@@ -262,20 +266,39 @@ def plot_spiral_extrapolation(t_train, state_train, state_future, file_name):
     
     # Ground truth
     plt.plot(x_gt, y_gt, 'gray', linestyle='--', alpha=0.4, linewidth=2, label='Ground Truth')
+
+    #if model is provided, compute the learned trajectory through the trainin region.
+    if model is not None and device is not None:
+        with torch.no_grad():
+            #Create dense time points for a smooth trajectory
+            t_train_min = t_train[0].item()
+            t_train_max = t_train[-1].item()
+            t_train_dense = torch.linspace(t_train_min, t_train_max, 200).to(device)
+            
+            # Integrate model through training region
+            state_train_pred = odeint(model, state_train[0:1], t_train_dense)
+            
+            # Extract coordinates
+            x_train_pred = state_train_pred[:, 0, 0].cpu().numpy()
+            y_train_pred = state_train_pred[:, 0, 1].cpu().numpy()
+            
+            # Plot learned trajectory in training region
+            plt.plot(x_train_pred, y_train_pred, 'green', linewidth=3, alpha=0.9, 
+                    label='Learned Trajectory (Training Region)')
+    else:
+        # Fallback: just connect training points
+        plt.plot(x_train, y_train, 'green', linewidth=3, alpha=0.9, label='Training Region (Connected Points)')
     
     # Training data points
     plt.scatter(x_train, y_train, c='red', s=40, alpha=0.7, zorder=5, label='Training Data')
-    
-    # Training region trajectory
-    plt.plot(x_train, y_train, 'green', linewidth=3, alpha=0.9, label='Training Region')
     
     # Extrapolation
     plt.plot(x_future, y_future, 'blue', linewidth=3, label='Extrapolation')
     
     # Markers
-    plt.scatter([x_train[0]], [y_train[0]], c='green', s=150, marker='o', 
+    plt.scatter([x_train[0]], [y_train[0]], c='green', s=110, marker='o', 
                edgecolors='black', linewidth=2, label='Start', zorder=10)
-    plt.scatter([x_train[-1]], [y_train[-1]], c='orange', s=150, marker='s', 
+    plt.scatter([x_train[-1]], [y_train[-1]], c='orange', s=110, marker='s', 
                edgecolors='black', linewidth=2, label='End of Training', zorder=10)
     
     plt.title("Neural ODE: Spiral Extrapolation", fontsize=14, fontweight='bold')
@@ -338,7 +361,7 @@ def plot_train_test_comparison(model, t_train, data_train, t_test, data_test, t_
     plt.plot(x_gt, y_gt, 'gray', linestyle='--', alpha=0.4, linewidth=2, label='Ground Truth')
     
     # Model prediction (smooth line)
-    plt.plot(x_pred, y_pred, 'green', linewidth=2.5, alpha=0.8, label='Model Prediction')
+    plt.plot(x_pred, y_pred, 'green', linewidth=1.5, alpha=0.8, label='Model Prediction')
     
     # Training data points (blue)
     plt.scatter(x_train, y_train, c='blue', s=50, alpha=0.7, zorder=5, 
@@ -349,7 +372,7 @@ def plot_train_test_comparison(model, t_train, data_train, t_test, data_test, t_
                edgecolors='darkred', linewidth=0.5, label=f'Test Data (n={len(x_test)})')
     
     # Start marker
-    plt.scatter([x_train[0]], [y_train[0]], c='green', s=200, marker='o', 
+    plt.scatter([x_train[0]], [y_train[0]], c='green', s=100, marker='o', 
                edgecolors='black', linewidth=2, label='Start', zorder=10)
     
     plt.title("Neural ODE: Train vs Test Performance", fontsize=14, fontweight='bold')
