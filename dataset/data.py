@@ -5,9 +5,37 @@ import torch.nn as nn
 import os
 from torchdiffeq import odeint_adjoint as odeint
 
-def generate_irregular(n_samples, t_max=4*np.pi):
+#Sine dynamics
+class SineDynamics(nn.Module):
+    def __init__(self, device="cpu"):
+        super(SineDynamics, self).__init__()
+        self.A = torch.tensor([[0.0, 1.0], 
+                          [-1.0, 0.0]], dtype=torch.float32, device=device)
+        
+    def forward(self, t, y):
+        return torch.mm(y, self.A.T)
+
+def generate_sine(true_func, batch_size=32, n_samples=100, t_max=4*np.pi, device="cpu"):
+    #timepoints
+    t = torch.linspace(0, t_max, n_samples).to(device)
+
+    #Intitial conditions
+    y0_position = (torch.rand(batch_size) * 4 - 2)
+    y0_velocity = (torch.rand(batch_size) * 4 - 2)
+    y0 = torch.stack([y0_position, y0_velocity], dim=1).to(device)
+
+    #solve ode with true dynamics
+    with torch.no_grad():
+        trajectories = odeint(true_func, y0, t, method='dopri5')
+
+    return t, y0, trajectories
+
+def generate_irregular(true_func, n_samples=100, t_max=4*np.pi, noise_std=0.1, device="cpu"):
     t = np.sort(np.random.rand(n_samples) * t_max)
     t[0] = 0
+    t_tensor = torch.tensor(t, dtype=torch.float32).to(device)
+
+    #initial condition 
 
     # Calculate position and velocity
     y = np.sin(t)
@@ -58,41 +86,53 @@ def generate_spiral(true_func, batch_size=32, n_samples=100, t_max=10, device="c
     return t, y0, true_trajectories
 
 
-def plot_samples(t, state, title, file_name):
-    # Extract position from state
-    y = state[:, 0]  # First column is position
+def plot_samples(t, y0, trajectories, title="True Sine Wave Dynamics", file_name="true_sine.png"):
+    # Move to CPU and convert to numpy
+    t_np = t.cpu().numpy()
+    traj_np = trajectories.cpu().numpy()  # [n_points, batch_size, 2]
     
-    # Generate a smooth line for sine wave
-    t_smooth = np.linspace(0, float(t.max()), 200)
-    y_true = np.sin(t_smooth)
-
-    plt.figure(figsize=(10, 5))
-
-    # Plot ground truth
-    plt.plot(t_smooth, y_true, label="True Function", color="red", linestyle="--", alpha=0.6)
-
-    # Plot the irregular, noisy samples (only position)
-    plt.scatter(t.numpy(), y.numpy(), color="blue", label="Irregular Observations", s=18)
-    plt.title(title)
-    plt.xlabel("Time (t)")
-    plt.ylabel("Position (y)")
-    plt.legend()
-    plt.grid(True, alpha=0.3)
-
+    batch_size = traj_np.shape[1]
+    n_plot = batch_size
+    
+    fig, axes = plt.subplots(2, 1, figsize=(12, 10))
+    
+    # Plot position (y) vs time
+    for i in range(n_plot):
+        position = traj_np[:, i, 0]  # Extract position
+        axes[0].plot(t_np, position, '-', alpha=0.7, linewidth=1.5, 
+                    label=f'Trajectory {i+1}' if i < 5 else None)
+    
+    axes[0].set_title("Position vs Time", fontsize=14, fontweight='bold')
+    axes[0].set_xlabel("Time (t)", fontsize=12)
+    axes[0].set_ylabel("Position (y)", fontsize=12)
+    axes[0].grid(True, alpha=0.3)
+    
+    # Plot velocity (v) vs time
+    for i in range(n_plot):
+        velocity = traj_np[:, i, 1]  # Extract velocity
+        axes[1].plot(t_np, velocity, '-', alpha=0.7, linewidth=1.5)
+    
+    axes[1].set_title("Velocity vs Time", fontsize=14, fontweight='bold')
+    axes[1].set_xlabel("Time (t)", fontsize=12)
+    axes[1].set_ylabel("Velocity (v)", fontsize=12)
+    axes[1].grid(True, alpha=0.3)
+    
+    plt.suptitle(title, fontsize=16, fontweight='bold', y=0.995)
+    plt.tight_layout()
+    
+    # Save
     script_path = os.path.abspath(__file__)
     script_dir = os.path.dirname(script_path)
     project_root = os.path.dirname(script_dir)
-    
     results_dir = os.path.join(project_root, 'Results')
     os.makedirs(results_dir, exist_ok=True)
     
     full_path = os.path.join(results_dir, file_name)
-
-    # Save the figure
-    plt.savefig(full_path)
+    plt.savefig(full_path, dpi=150)
+    plt.close()
     print(f"Plot saved to: {full_path}")
 
-def plot(t, y0, trajectories, title="Spiral Trajectories", file_name="trajectories.png"):
+def plot_spiral(t, y0, trajectories, title="Spiral Trajectories", file_name="trajectories.png"):
     # Move to CPU and convert to numpy for plotting
     t_np = t.cpu().numpy()
     y0_np = y0.cpu().numpy()
@@ -153,6 +193,10 @@ if __name__ == '__main__':
     #t, state = generate_irregular(50)
     #plot_samples(t, state, title="Test", file_name="test.png")
 
-    true_func = SpiralDynamics()
-    t, y0, true_traj = generate_spiral(true_func, batch_size=8, n_samples=100)
-    plot(t, y0, true_traj, title="True Spiral Dynamics", file_name="true_spirals.png")
+    # true_func = SpiralDynamics()
+    # t, y0, true_traj = generate_spiral(true_func, batch_size=8, n_samples=100)
+    # plot_spiral(t, y0, true_traj, title="True Spiral Dynamics", file_name="true_spirals.png")
+
+    true_func = SineDynamics()
+    t, y0, true_traj = generate_sine(true_func, batch_size=8, n_samples=100)
+    plot_samples(t, y0, true_traj, title="True Sine Dynamics", file_name="true_sine.png")
