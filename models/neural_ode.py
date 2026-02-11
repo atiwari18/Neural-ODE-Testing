@@ -102,56 +102,6 @@ def extrapolate(model, t_train, state_train, device, t_max=6*torch.pi):
 
     return t_future, state_future
 
-
-def plot_vector_field(model, file_name, device, t_range=(0, 6*np.pi), y_range=(-1.5, 1.5), v_range=(-1.5, 1.5)):
-    """
-    For autonomous systems, we plot the phase space (y vs v), not (t vs y)
-    """
-    y_grid = np.linspace(y_range[0], y_range[1], 20)
-    v_grid = np.linspace(v_range[0], v_range[1], 20)
-    Y, V = np.meshgrid(y_grid, v_grid)
-
-    # Calculate derivatives at each point
-    dY = np.zeros_like(Y)  # dy/dt
-    dV = np.zeros_like(V)  # dv/dt
-
-    model.eval()
-    with torch.no_grad():
-        for i in range(len(y_grid)):
-            for j in range(len(v_grid)):
-                state = torch.tensor([[y_grid[i], v_grid[j]]]).float().to(device)
-                
-                # The model outputs [dy/dt, dv/dt]
-                derivatives = model(None, state)  # t is ignored
-                dY[j, i] = derivatives[0, 0].cpu().item()
-                dV[j, i] = derivatives[0, 1].cpu().item()
-
-    plt.figure(figsize=(10, 8))
-    plt.streamplot(Y, V, dY, dV, color=np.sqrt(dY**2 + dV**2), cmap='viridis')
-    plt.title("Phase Space: Learned Vector Field")
-    plt.xlabel("Position (y)")
-    plt.ylabel("Velocity (v)")
-    plt.colorbar(label='Magnitude of derivative')
-    plt.grid(True, alpha=0.3)
-    
-    # Add a circle to show the true trajectory
-    theta = np.linspace(0, 2*np.pi, 100)
-    plt.plot(np.sin(theta), np.cos(theta), 'r--', alpha=0.5, label='True trajectory (circle)')
-    plt.legend()
-    
-    script_path = os.path.abspath(__file__)
-    script_dir = os.path.dirname(script_path)
-    project_root = os.path.dirname(script_dir)
-    
-    results_dir = os.path.join(project_root, 'Results')
-    os.makedirs(results_dir, exist_ok=True)
-    
-    full_path = os.path.join(results_dir, file_name)
-
-    plt.savefig(full_path)
-    print(f"Plot saved to: {full_path}")
-
-
 def plot_extrapolation(t_train, state_train, t_future, state_future, file_name, model, device):
     # Extract positions from states
     y_train = state_train[:, 0]
@@ -364,8 +314,6 @@ def evaluate_on_holdout(model, criterion, t_test, data_test):
     return loss.item()
 
 def plot_comparison(true_func, learned_func, device, file_name="True vs. Learned Dynamics.png", n_trajectories=5):
-    """Compare true vs learned dynamics"""
-    
     fig, axes = plt.subplots(1, 2, figsize=(14, 6))
     
     # Generate test initial conditions
@@ -408,4 +356,83 @@ def plot_comparison(true_func, learned_func, device, file_name="True vs. Learned
     os.makedirs(results_dir, exist_ok=True)
     
     plt.savefig(os.path.join(results_dir, file_name), dpi=150, bbox_inches='tight')
+    print(f"Plot saved to: {os.path.join(results_dir, file_name)}")
+
+def plot_sine_extrapolation(t_train, state_train, t_future, state_future, true_func=None, file_name=None, model=None, device=None):
+    # Extract position (first dimension of state)
+    t_train_np = t_train.cpu().numpy()
+    y_train = state_train[:, 0].cpu().numpy()  # Position only
+    
+    t_future_np = t_future.cpu().numpy()
+    y_future = state_future[:, 0, 0].cpu().numpy()  # Position only
+    
+    y0_train = state_train[0:1, :].to(device)  # Initial condition [1, 2]
+    
+    plt.figure(figsize=(14, 6))
+    
+    # Generate TRUE ground truth using the ODE solver
+    if true_func is not None and device is not None:
+        with torch.no_grad():
+            # Create dense time points for smooth ground truth
+            t_train_min = t_train[0].item()
+            t_train_max = t_train[-1].item()
+            t_gt_dense = torch.linspace(t_train_min, t_train_max, 300).to(device)
+            
+            # Solve TRUE dynamics
+            state_gt = odeint(true_func, y0_train, t_gt_dense)
+            
+            # Extract position (first dimension)
+            t_gt_np = t_gt_dense.cpu().numpy()
+            y_gt = state_gt[:, 0, 0].cpu().numpy()
+            
+            # Plot ground truth
+            plt.plot(t_gt_np, y_gt, 'gray', linestyle='--', alpha=0.5, 
+                    linewidth=2.5, label='True Dynamics (Ground Truth)')
+    
+    # Plot learned trajectory through training region
+    if model is not None and device is not None:
+        with torch.no_grad():
+            # Create dense time points for smooth trajectory
+            t_train_min = t_train[0].item()
+            t_train_max = t_train[-1].item()
+            t_train_dense = torch.linspace(t_train_min, t_train_max, 300).to(device)
+            
+            # Integrate model through training region
+            state_train_pred = odeint(model, y0_train, t_train_dense)
+            
+            # Extract position
+            t_train_dense_np = t_train_dense.cpu().numpy()
+            y_train_pred = state_train_pred[:, 0, 0].cpu().numpy()
+            
+            # Plot learned trajectory in training region
+            plt.plot(t_train_dense_np, y_train_pred, 'green', linewidth=2.5, alpha=0.8, 
+                    label='Learned Dynamics (Training Region)')
+    
+    # Training data points
+    plt.scatter(t_train_np, y_train, c='red', s=40, alpha=0.7, zorder=5, 
+               label='Training Observations')
+    
+    # Extrapolation
+    plt.plot(t_future_np, y_future, 'blue', linewidth=2.5, alpha=0.8,
+            label='Learned Extrapolation')
+    
+    # Mark boundaries
+    plt.axvline(x=t_train_np[-1], color='orange', linestyle=':', linewidth=2, 
+               alpha=0.7, label='End of Training Data')
+    
+    plt.title("Neural ODE: Sine Wave Extrapolation", fontsize=14, fontweight='bold')
+    plt.xlabel("Time (t)", fontsize=12)
+    plt.ylabel("Position (y)", fontsize=12)
+    plt.legend(fontsize=10, loc='best')
+    plt.grid(True, alpha=0.3)
+    
+    # Save
+    script_path = os.path.abspath(__file__)
+    script_dir = os.path.dirname(script_path)
+    project_root = os.path.dirname(script_dir)
+    results_dir = os.path.join(project_root, 'Results')
+    os.makedirs(results_dir, exist_ok=True)
+    
+    plt.savefig(os.path.join(results_dir, file_name), dpi=150, bbox_inches='tight')
+    plt.close()
     print(f"Plot saved to: {os.path.join(results_dir, file_name)}")
