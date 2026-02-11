@@ -32,5 +32,5 @@ plot_loss(losses, file_name="Losses (sine-multiple-traj-200).png")
 #3xtrapolating one
 single_y0 = y0[0:1]
 single_true = true_traj[:, 0:1, :]
-t_future, state_future = extrapolate(model, t, single_true[:, 0, :], device=device, t_max=30)
+t_future, state_future = extrapolate(model, t, single_true[:, 0, :], device=device, t_max=6*torch.pi)
 plot_sine_extrapolation(t, single_true[:, 0, :], t_future, state_future, true_func=true_func, file_name="single_extrapolation (sine-multiple-traj-200).png", model=model, device=device)
