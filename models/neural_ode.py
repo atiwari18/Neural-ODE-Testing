@@ -364,7 +364,7 @@ def plot_sine_extrapolation(t_train, state_train, t_future, state_future, true_f
     y_train = state_train[:, 0].cpu().numpy()  # Position only
     
     t_future_np = t_future.cpu().numpy()
-    y_future = state_future[:, 0, 0].cpu().numpy()  # Position only
+    #y_future = state_future[:, 0, 0].cpu().numpy()  # Position only
     
     y0_train = state_train[0:1, :].to(device)  # Initial condition [1, 2]
     
@@ -386,39 +386,29 @@ def plot_sine_extrapolation(t_train, state_train, t_future, state_future, true_f
             y_gt = state_gt[:, 0, 0].cpu().numpy()
             
             # Plot ground truth
-            plt.plot(t_gt_np, y_gt, 'gray', linestyle='--', alpha=0.5, 
-                    linewidth=2.5, label='True Dynamics (Ground Truth)')
+            plt.plot(t_gt_np, y_gt, 'gray', linestyle='--', alpha=0.5, linewidth=2.5, label='True Dynamics (Ground Truth)')
     
     # Plot learned trajectory through training region
     if model is not None and device is not None:
         with torch.no_grad():
-            # Create dense time points for smooth trajectory
-            t_train_min = t_train[0].item()
-            t_train_max = t_train[-1].item()
-            t_train_dense = torch.linspace(t_train_min, t_train_max, 300).to(device)
+            #Generate single time span that covers BOTH training and future
+            t_full = torch.linspace(t_train_np[0].item(), t_future_np[-1].item(), 500).to(device)
             
             # Integrate model through training region
-            state_train_pred = odeint(model, y0_train, t_train_dense)
+            state_full = odeint(model, y0_train, t_full)
             
             # Extract position
-            t_train_dense_np = t_train_dense.cpu().numpy()
-            y_train_pred = state_train_pred[:, 0, 0].cpu().numpy()
+            t_full_np = t_full.cpu().numpy()
+            y_train_pred = state_full[:, 0, 0].cpu().numpy()
             
             # Plot learned trajectory in training region
-            plt.plot(t_train_dense_np, y_train_pred, 'green', linewidth=2.5, alpha=0.8, 
-                    label='Learned Dynamics (Training Region)')
+            plt.plot(t_full_np, y_train_pred, 'green', linewidth=2.5, alpha=0.8, label='Learned Dynamics (Training Region)')
     
     # Training data points
-    plt.scatter(t_train_np, y_train, c='red', s=40, alpha=0.7, zorder=5, 
-               label='Training Observations')
-    
-    # Extrapolation
-    plt.plot(t_future_np, y_future, 'blue', linewidth=2.5, alpha=0.8,
-            label='Learned Extrapolation')
+    plt.scatter(t_train_np, y_train, c='red', s=40, alpha=0.7, zorder=5, label='Training Observations')
     
     # Mark boundaries
-    plt.axvline(x=t_train_np[-1], color='orange', linestyle=':', linewidth=2, 
-               alpha=0.7, label='End of Training Data')
+    plt.axvline(x=t_train_np[-1], color='orange', linestyle=':', linewidth=2, alpha=0.7, label='End of Training Data')
     
     plt.title("Neural ODE: Sine Wave Extrapolation", fontsize=14, fontweight='bold')
     plt.xlabel("Time (t)", fontsize=12)
