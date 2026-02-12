@@ -48,7 +48,7 @@ class ODEFunc(nn.Module):
         return self.net(state)
 
     
-def train_ode(model, epochs, optimizer, criterion, true_traj, t, y0):
+def train_ode(model, epochs, optimizer, criterion, true_traj, t, y0, file_name="neural_ode_sine.pth"):
     losses = []
 
     # Training loop
@@ -68,6 +68,18 @@ def train_ode(model, epochs, optimizer, criterion, true_traj, t, y0):
         if (epoch + 1) % 10 == 0:
             print(f"Epoch {epoch+1}/{epochs} | Loss: {loss.item():.6f}")
 
+    script_path = os.path.abspath(__file__)
+    script_dir = os.path.dirname(script_path)
+    project_root = os.path.dirname(script_dir)
+    
+    results_dir = os.path.join(project_root, 'Results')
+    os.makedirs(results_dir, exist_ok=True)
+    full_path = os.path.join(results_dir, file_name)
+
+    torch.save(model.state_dict(), full_path)
+
+    print(f"Model saved to {full_path}")
+
     return losses
 
 
@@ -85,8 +97,7 @@ def plot_loss(losses, file_name):
     project_root = os.path.dirname(script_dir)
     
     results_dir = os.path.join(project_root, 'Results')
-    os.makedirs(results_dir, exist_ok=True)
-    
+    os.makedirs(results_dir, exist_ok=True)    
     full_path = os.path.join(results_dir, file_name)
 
     plt.savefig(full_path)
