@@ -113,61 +113,6 @@ def extrapolate(model, t_train, state_train, device, t_max=6*torch.pi):
 
     return t_future, state_future
 
-def plot_extrapolation(t_train, state_train, t_future, state_future, file_name, model, device):
-    # Extract positions from states
-    y_train = state_train[:, 0]
-    y_future = state_future[:, :, 0]  # Shape: [time, batch, features]
-    
-    # Generate prediction from t=0 to show interpolation quality
-    with torch.no_grad():
-        t_interp = torch.linspace(0, float(t_train[-1]), 200).to(device)
-        # Start from the initial state at t=0
-        state_interp = odeint(model, state_train[0:1], t_interp)
-        y_interp = state_interp[:, :, 0]  # Extract position
-    
-    # Generate Ground Truth for the whole range
-    t_total = torch.linspace(0, 6 * np.pi, 200)
-    y_total = torch.sin(t_total)
-    
-    plt.figure(figsize=(14, 6))
-    
-    # Plot Ground Truth
-    plt.plot(t_total.numpy(), y_total.numpy(), color='gray', label='Ground Truth', linestyle='--', alpha=0.5, linewidth=2)
-    
-    # Plot Training Data (noisy observations)
-    plt.scatter(t_train.cpu().numpy(), y_train.cpu().numpy(), color='red', label='Training Samples (Noisy)', s=30, zorder=5)
-    
-    # Plot Neural ODE interpolation (0 to end of training)
-    plt.plot(t_interp.cpu().numpy(), y_interp.detach().cpu().numpy().squeeze(), 
-             color='green', label='Neural ODE Fit (Training Region)', linewidth=2, alpha=0.8)
-    
-    # Plot Neural ODE extrapolation (beyond training)
-    plt.plot(t_future.cpu().numpy(), y_future.detach().cpu().numpy().squeeze(), 
-             color='blue', label='Neural ODE Extrapolation', linewidth=2)
-    
-    # Mark the boundary
-    plt.axvline(x=t_train[-1].cpu().item(), color='black', linestyle=':', 
-                linewidth=2, label='End of Training Data')
-    
-    plt.title("Neural ODE: Interpolation & Extrapolation (State-Space)")
-    plt.xlabel("Time (t)")
-    plt.ylabel("Position (y)")
-    plt.legend(loc='upper right')
-    plt.grid(True, alpha=0.3)
-    plt.xlim(0, 6 * np.pi)
-    
-    script_path = os.path.abspath(__file__)
-    script_dir = os.path.dirname(script_path)
-    project_root = os.path.dirname(script_dir)
-    
-    results_dir = os.path.join(project_root, 'Results')
-    os.makedirs(results_dir, exist_ok=True)
-    
-    full_path = os.path.join(results_dir, file_name)
-    plt.savefig(full_path)
-    print(f"Plot saved to: {full_path}")
-
-
 def plot_learned_dynamics_vs_true(model, device, file_name, y_range=(-1.5, 1.5), n_points=30):
     """
     For autonomous systems, we plot learned dynamics in phase space
