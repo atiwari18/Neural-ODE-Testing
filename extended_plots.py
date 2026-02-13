@@ -44,6 +44,8 @@ if __name__ == '__main__':
 
         #load model
         model = ODEFunc(time_invariant=True).to(device)
+        weights = torch.load(".\\Results\\neural_ode_sine.pth", weights_only=True)
+        model.load_state_dict(weights)
 
         #single values
         single_true = true_traj[:, 0:1, :]
