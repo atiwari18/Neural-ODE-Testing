@@ -30,3 +30,43 @@ class LSTM(nn.Module):
         lstm_out, hidden = self.lstm(x, hidden)
         output = self.fc(lstm_out)
         return output, hidden
+    
+def train_lstm(lstm, epochs, optimizer, criterion, inputs, targets, device):
+    n_windows = inputs.shape[0]
+    losses = []
+
+    #training loop
+    lstm.train()
+    for epoch in range(epochs):
+        epoch_loss = 0.0
+
+        #shuffle order of windows each epoch
+        perm = torch.randperm(n_windows)
+
+        for i in perm:
+            #get batch
+            x = inputs[i].to(device)
+            y = targets[i].to(device)
+
+            optimizer.zero_grad()
+
+            #forward pass
+            pred, _ = lstm(x)
+
+            #loss
+            loss = criterion(pred, y)
+
+            #backwards
+            loss.backward()
+            optimizer.step()
+
+            epoch.loss += loss.item()
+
+        #calculate the average loss
+        avg_loss = epoch_loss / n_windows
+        losses.append(avg_loss)
+
+        if (epoch + 1) % 10 == 0:
+            print(f"Epoch {epoch+1}/{epochs} | Loss: {loss.item():.6f}")
+
+        return losses
