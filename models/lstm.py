@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import numpy as np
 import matplotlib.pyplot as plt
+from torchdiffeq import odeint_adjoint as odeint
 import os
 
 class LSTM(nn.Module):
@@ -31,6 +32,37 @@ class LSTM(nn.Module):
         output = self.fc(lstm_out)
         return output, hidden
     
+    def rollout(self, seed_sequence, t_train, t_max, device):
+        #computr timestep frm training data and derive n_steps from t_max
+        dt = (t_train[1] - t_train[0]).item()
+        t_start = t_train[-1].item()
+        n_steps = int((t_max - t_start) / dt)
+
+        #future time points
+        t_future = torch.linspace((t_start, t_max, n_steps)).to(device)
+
+        self.eval()
+        predictions =[]
+
+        with torch.no_grad():
+            #process seed sequence to build hiddn state
+            _, hidden = self.forward(seed_sequence)
+
+            #start from laast obsercvation
+            current_input = seed_sequence[:, 1:, :]
+
+            for _ in range (n_steps):
+                output, hidden = self.forward(current_input, hidden)
+                predictions.append(output[:, 0, :])
+
+                #feed predicyion back as input
+                current_input = output
+
+        #stack the preds
+        return torch.stack(predictions, dim=0), t_future
+
+
+    
 def train_lstm(lstm, epochs, optimizer, criterion, inputs, targets, device):
     n_windows = inputs.shape[0]
     losses = []
@@ -59,7 +91,6 @@ def train_lstm(lstm, epochs, optimizer, criterion, inputs, targets, device):
             #backwards
             loss.backward()
             optimizer.step()
-
             epoch.loss += loss.item()
 
         #calculate the average loss
@@ -70,3 +101,56 @@ def train_lstm(lstm, epochs, optimizer, criterion, inputs, targets, device):
             print(f"Epoch {epoch+1}/{epochs} | Loss: {loss.item():.6f}")
 
         return losses
+    
+
+def plot_lstm_sine_extrapolation(t_train, state_train, t_future, lstm_future, true_func=None, t_max=None, file_name="lstm_sine_extrapolation.png", device="cpu"):
+        t_train_np = t_train.cpu().numpy()
+        y_train = state_train[:, 0].cpu().numpy()
+        y0_train = state_train[0:1, :].to(device)
+
+        t_future_np = t_future.cpu().numpy()
+        y_future = lstm_future[:, 0].cpu().numpy()  # Position only
+
+        plt.figure(figsize=(14, 6))
+
+        # Ground truth extended to t_max so it covers both training AND extrapolation
+        if true_func is not None:
+            # Use t_max if provided, otherwise just cover training region
+            gt_end = t_max if t_max is not None else t_train[-1].item()
+
+            with torch.no_grad():
+                t_gt = torch.linspace(t_train[0].item(), gt_end, 500).to(device)
+                state_gt = odeint(true_func, y0_train, t_gt)
+                plt.plot(t_gt.cpu().numpy(), state_gt[:, 0, 0].cpu().numpy(),
+                        'gray', linestyle='--', alpha=0.5, linewidth=2.5,
+                        label='True Dynamics')
+
+        # Single continuous LSTM line from training start to t_max
+        t_combined = np.concatenate([t_train_np, t_future_np])
+        y_combined = np.concatenate([y_train, y_future])
+        plt.plot(t_combined, y_combined, 'green', linewidth=2.5, alpha=0.8,
+                label='LSTM Trajectory')
+
+        # Training observations
+        plt.scatter(t_train_np, y_train, c='red', s=40, alpha=0.7,
+                zorder=5, label='Training Observations')
+
+        # Mark boundary between training and extrapolation
+        plt.axvline(x=t_train_np[-1], color='orange', linestyle=':',
+                linewidth=2, alpha=0.7, label='End of Training')
+
+        plt.title("LSTM: Sine Wave Extrapolation", fontsize=14, fontweight='bold')
+        plt.xlabel("Time (t)", fontsize=12)
+        plt.ylabel("Position (y)", fontsize=12)
+        plt.legend(fontsize=10, loc='best')
+        plt.grid(True, alpha=0.3)
+
+        script_path = os.path.abspath(__file__)
+        script_dir = os.path.dirname(script_path)
+        project_root = os.path.dirname(script_dir)
+        results_dir = os.path.join(project_root, 'Results')
+        os.makedirs(results_dir, exist_ok=True)
+
+        plt.savefig(os.path.join(results_dir, file_name), dpi=150, bbox_inches='tight')
+        plt.close()
+        print(f"Plot saved to: {os.path.join(results_dir, file_name)}")

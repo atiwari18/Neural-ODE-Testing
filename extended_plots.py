@@ -40,7 +40,7 @@ if __name__ == '__main__':
         t = t.to(device)
         y0 = y0.to(device)
         true_traj = true_traj.to(device)
-        print("Data Loaded!")
+        print("Data Loaded!\n")
 
         #load model
         model = ODEFunc(time_invariant=True).to(device)
