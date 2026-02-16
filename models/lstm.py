@@ -74,7 +74,7 @@ class LSTM(nn.Module):
 
 
     
-def train_lstm(lstm, epochs, optimizer, criterion, inputs, targets, device):
+def train_lstm(lstm, epochs, optimizer, criterion, inputs, targets, device, file_name="lstm_sine.pth"):
     n_windows = inputs.shape[0]
     losses = []
 
@@ -110,6 +110,18 @@ def train_lstm(lstm, epochs, optimizer, criterion, inputs, targets, device):
 
         if (epoch + 1) % 10 == 0:
             print(f"Epoch {epoch+1}/{epochs} | Loss: {loss.item():.6f}")
+
+    script_path = os.path.abspath(__file__)
+    script_dir = os.path.dirname(script_path)
+    project_root = os.path.dirname(script_dir)
+    
+    results_dir = os.path.join(project_root, 'Results')
+    os.makedirs(results_dir, exist_ok=True)
+    full_path = os.path.join(results_dir, file_name)
+
+    torch.save(lstm.state_dict(), full_path)
+
+    print(f"Model saved to {full_path}")
 
     return losses
     
