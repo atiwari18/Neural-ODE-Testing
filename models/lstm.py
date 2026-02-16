@@ -36,10 +36,12 @@ class LSTM(nn.Module):
         #computr timestep frm training data and derive n_steps from t_max
         dt = (t_train[1] - t_train[0]).item()
         t_start = t_train[-1].item()
-        n_steps = int((t_max - t_start) / dt)               #How many steps to predict up yto t_max
+        n_future_steps = int((t_max - t_start) / dt)               #How many steps to predict up yto t_max
+        n_train_steps = len(t_train) - len(seed_sequence[0])
 
         #future time points
-        t_future = torch.linspace(t_start, t_max, n_steps).to(device)
+        t_future = torch.linspace(t_start, t_max, n_future_steps).to(device)
+        t_all = torch.cat([t_train, t_future[1:]])
 
         self.eval()
         predictions =[]
@@ -47,20 +49,28 @@ class LSTM(nn.Module):
         with torch.no_grad():
             #process seed sequence to build hiddn state, lstm stores memory in the hidden state
             #that memory is needed to continue with predictions
-            _, hidden = self.forward(seed_sequence)
+            seed_out, hidden = self.forward(seed_sequence)
+
+            # Add seed predictions to output
+            for j in range(seed_out.shape[1]):
+                predictions.append(seed_out[:, j, :])              #Last prediction from seed
 
             #start from laast obsercvation
-            current_input = seed_sequence[:, 1:, :]
+            current_input = seed_out[:, -1:, :]
 
-            for _ in range (n_steps):
+            for _ in range(n_train_steps):
                 output, hidden = self.forward(current_input, hidden)
                 predictions.append(output[:, 0, :])
+                current_input = output
 
-                #feed predicyion back as input
+            #Continue into future region
+            for _ in range(n_future_steps - 1):
+                output, hidden = self.forward(current_input, hidden)
+                predictions.append(output[:, 0, :])
                 current_input = output
 
         #stack the preds
-        return torch.stack(predictions, dim=0), t_future
+        return torch.stack(predictions, dim=0), t_all
 
 
     
@@ -101,16 +111,18 @@ def train_lstm(lstm, epochs, optimizer, criterion, inputs, targets, device):
         if (epoch + 1) % 10 == 0:
             print(f"Epoch {epoch+1}/{epochs} | Loss: {loss.item():.6f}")
 
-        return losses
+    return losses
     
 
-def plot_lstm_sine_extrapolation(t_train, state_train, t_future, lstm_future, true_func=None, t_max=None, file_name="lstm_sine_extrapolation.png", device="cpu"):
+def plot_lstm_sine_extrapolation(t_train, state_train, t_all, lstm_all, true_func=None, t_max=None, file_name="lstm_sine_extrapolation.png", device="cpu"):
+        #Full train
         t_train_np = t_train.cpu().numpy()
         y_train = state_train[:, 0].cpu().numpy()
         y0_train = state_train[0:1, :].to(device)
 
-        t_future_np = t_future.cpu().numpy()
-        y_future = lstm_future[:, 0].cpu().numpy()  # Position only
+        #Full LSTM trajectory
+        t_all_np = t_all.cpu().numpy()
+        y_all = lstm_all[:, 0].cpu().numpy()  # Position only
 
         plt.figure(figsize=(14, 6))
 
@@ -127,9 +139,7 @@ def plot_lstm_sine_extrapolation(t_train, state_train, t_future, lstm_future, tr
                         label='True Dynamics')
 
         # Single continuous LSTM line from training start to t_max
-        t_combined = np.concatenate([t_train_np, t_future_np])
-        y_combined = np.concatenate([y_train, y_future])
-        plt.plot(t_combined, y_combined, 'green', linewidth=2.5, alpha=0.8,
+        plt.plot(t_all_np[:len(y_all)], y_all, 'green', linewidth=2.5, alpha=0.8,
                 label='LSTM Trajectory')
 
         # Training observations
