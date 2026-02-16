@@ -26,7 +26,7 @@ def generate_sines(node, future_vals, t, single_true, device, true_func, lstm, s
         lstm_all = lstm_all[:, 0, :]
         plot_lstm_sine_extrapolation(t_train=t, state_train=single_true[:, 0, :], 
                              t_all=t_all, lstm_all=lstm_all, 
-                             true_func=true_func, t_max=v, file_name="lstm_sine_extrapolation ({v}).png", device=device)
+                             true_func=true_func, t_max=v, file_name=f"lstm_sine_extrapolation ({v}).png", device=device)
 
     print(f"Generated all plots for future_vals: [12π, 24π, 48π]")
 
@@ -64,9 +64,10 @@ if __name__ == '__main__':
         #single values
         single_true = true_traj[:, 0:1, :]
 
-        generate_sines(node, future_vals, t, single_true, device, true_func)
-
         #LSTM
-        seed = true_traj[:, 0, :]
+        single = true_traj[:, 0, :]
+        seed = single[:20].unsqueeze(0).to(device)
+
+        generate_sines(node, future_vals, t, single_true, device, true_func, lstm, seed)
        
 

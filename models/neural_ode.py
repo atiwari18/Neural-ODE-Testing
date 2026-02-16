@@ -331,7 +331,7 @@ def plot_sine_extrapolation(t_train, state_train, t_future, state_future, true_f
         with torch.no_grad():
             # Create dense time points for smooth ground truth
             t_train_min = t_train[0].item()
-            t_train_max = t_train[-1].item()
+            t_train_max = t_future[-1].item()
             t_gt_dense = torch.linspace(t_train_min, t_train_max, 300).to(device)
             
             # Solve TRUE dynamics
