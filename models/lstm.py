@@ -36,16 +36,17 @@ class LSTM(nn.Module):
         #computr timestep frm training data and derive n_steps from t_max
         dt = (t_train[1] - t_train[0]).item()
         t_start = t_train[-1].item()
-        n_steps = int((t_max - t_start) / dt)
+        n_steps = int((t_max - t_start) / dt)               #How many steps to predict up yto t_max
 
         #future time points
-        t_future = torch.linspace((t_start, t_max, n_steps)).to(device)
+        t_future = torch.linspace(t_start, t_max, n_steps).to(device)
 
         self.eval()
         predictions =[]
 
         with torch.no_grad():
-            #process seed sequence to build hiddn state
+            #process seed sequence to build hiddn state, lstm stores memory in the hidden state
+            #that memory is needed to continue with predictions
             _, hidden = self.forward(seed_sequence)
 
             #start from laast obsercvation
@@ -91,7 +92,7 @@ def train_lstm(lstm, epochs, optimizer, criterion, inputs, targets, device):
             #backwards
             loss.backward()
             optimizer.step()
-            epoch.loss += loss.item()
+            epoch_loss += loss.item()
 
         #calculate the average loss
         avg_loss = epoch_loss / n_windows
