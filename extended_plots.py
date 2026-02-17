@@ -2,6 +2,8 @@ from models.neural_ode import ODEFunc, extrapolate, plot_sine_extrapolation, plo
 from models.lstm import LSTM, plot_lstm_sine_extrapolation
 from dataset.data import SineDynamics, generate_sine, generate_spiral
 import torch
+import matplotlib.pyplot as plt
+import os
 import argparse
 
 def parse_args():
@@ -15,21 +17,55 @@ def parse_args():
 
     return parser.parse_args()
 
+def plot_nfe_comparison(labels, nfes, file_name="nfe_by_horizon.png"):
+    plt.figure(figsize=(8, 5))
+    bars = plt.bar(labels, nfes, color='steelblue', edgecolor='black', width=0.5)
+    
+    # Annotate bars with exact counts
+    for bar, nfe in zip(bars, nfes):
+        plt.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.5,
+                 str(nfe), ha='center', va='bottom', fontsize=11)
+    
+    plt.title("Neural ODE: Function Evaluations by Extrapolation Horizon", fontsize=13)
+    plt.xlabel("Extrapolation Horizon")
+    plt.ylabel("Number of Function Evaluations (NFE)")
+    plt.grid(True, axis='y', alpha=0.3)
+    plt.tight_layout()
+
+    script_path = os.path.abspath(__file__)
+    script_dir = os.path.dirname(script_path)
+    project_root = os.path.dirname(script_dir)
+    
+    results_dir = os.path.join(project_root, 'Results')
+    os.makedirs(results_dir, exist_ok=True)
+    
+    full_path = os.path.join(results_dir, file_name)
+
+    plt.savefig(full_path)
+
+    print(f"NFE plot saved to: {full_path}")
+
 def generate_sines(node, future_vals, t, single_true, device, true_func, lstm, seed):
+    node_nfes = []
+    labels = []
 
     for v in future_vals:
-        t_future, state_future = extrapolate(node, t, single_true[:, 0, :], device=device, t_max=v)
-        plot_sine_extrapolation(t, single_true[:, 0, :], t_future, state_future, true_func=true_func, file_name=f"node_sine_extrapolation_1000 (test-{v}).png", model=node, device=device)
+        t_future, state_future, nfe = extrapolate(node, t, single_true[:, 0, :], device=device, t_max=v)
+        node_nfes.append(nfe)
+        labels.append(f"{v/torch.pi:.0f}π")
+        plot_sine_extrapolation(t, single_true[:, 0, :], t_future, state_future, true_func=true_func, file_name=f"node_sine_extrapolation_1000 (nfes-{v/torch.pi:.0f}π).png", model=node, device=device)
 
     #loop for lstm
-    for v in future_vals:
-        lstm_all, t_all = lstm.rollout(seed, t_train=t, t_max=v, device=device)
-        lstm_all = lstm_all[:, 0, :]
-        plot_lstm_sine_extrapolation(t_train=t, state_train=single_true[:, 0, :], 
-                             t_all=t_all, lstm_all=lstm_all, 
-                             true_func=true_func, t_max=v, file_name=f"lstm_sine_extrapolation (test-{v}).png", device=device)
+    # for v in future_vals:
+    #     lstm_all, t_all = lstm.rollout(seed, t_train=t, t_max=v, device=device)
+    #     lstm_all = lstm_all[:, 0, :]
+    #     plot_lstm_sine_extrapolation(t_train=t, state_train=single_true[:, 0, :], 
+    #                          t_all=t_all, lstm_all=lstm_all, 
+    #                          true_func=true_func, t_max=v, file_name=f"lstm_sine_extrapolation (test-{v}).png", device=device)
+        
+    plot_nfe_comparison(labels, node_nfes)
 
-    print(f"Generated all plots for future_vals: [12π, 24π, 48π]")
+    print(f"Generated all plots for future_vals: [{future_vals[0]/torch.pi:.0f}π, {future_vals[0]/torch.pi:.0f}π, {future_vals[0]/torch.pi:.0f}π]")
 
     return
 

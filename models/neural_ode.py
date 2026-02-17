@@ -9,6 +9,7 @@ class ODEFunc(nn.Module):
     def __init__(self, input_dim=2, hidden_dim=64, time_invariant=False):
         super(ODEFunc, self).__init__()
         self.time_invariant = time_invariant
+        self.nfe = 0
 
         #MLP for ODE
         if time_invariant:
@@ -35,6 +36,8 @@ class ODEFunc(nn.Module):
                 nn.init.constant_(m.bias, val=0)
 
     def forward(self, t, state):
+        self.nfe += 1
+
         #time invariant behavior
         if not self.time_invariant:
             #batch_size
@@ -46,6 +49,10 @@ class ODEFunc(nn.Module):
             state = torch.cat((state, t_expanded), dim=1)
         
         return self.net(state)
+    
+    def reset_nfe(self):
+        self.nfe = 0
+        return
 
     
 def train_ode(model, epochs, optimizer, criterion, true_traj, t, y0, file_name="neural_ode_sine.pth"):
@@ -107,11 +114,14 @@ def plot_loss(losses, file_name):
 def extrapolate(model, t_train, state_train, device, t_max=6*torch.pi):
     t_future = torch.linspace(float(t_train[-1]), t_max, 100).to(device)
 
+    model.reset_nfe() #reset before solving
     with torch.no_grad():
         # Use last known state as the new initial condition
         state_future = odeint(model, state_train[-1:], t_future)
 
-    return t_future, state_future
+    nfe = model.nfe
+
+    return t_future, state_future, nfe
 
 def plot_learned_dynamics_vs_true(model, device, file_name, y_range=(-1.5, 1.5), n_points=30):
     """
