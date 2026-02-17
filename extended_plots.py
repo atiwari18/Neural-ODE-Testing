@@ -19,9 +19,9 @@ def generate_sines(node, future_vals, t, single_true, device, true_func, lstm, s
 
     for v in future_vals:
         t_future, state_future = extrapolate(node, t, single_true[:, 0, :], device=device, t_max=v)
-        plot_sine_extrapolation(t, single_true[:, 0, :], t_future, state_future, true_func=true_func, file_name=f"sine_extrapolation_500 ({v}).png", model=node, device=device)
+        plot_sine_extrapolation(t, single_true[:, 0, :], t_future, state_future, true_func=true_func, file_name=f"node_sine_extrapolation_1000 ({v}).png", model=node, device=device)
 
-    #loop for lstm
+    # #loop for lstm
     # for v in future_vals:
     #     lstm_all, t_all = lstm.rollout(seed, t_train=t, t_max=v, device=device)
     #     lstm_all = lstm_all[:, 0, :]
@@ -54,7 +54,7 @@ if __name__ == '__main__':
 
         #load Neural ODE
         node = ODEFunc(time_invariant=True).to(device)
-        weights = torch.load(".\\Results\\neural_ode_sine_500.pth", weights_only=True)
+        weights = torch.load(".\\Results\\neural_ode_sine_1000.pth", weights_only=True)
         node.load_state_dict(weights)
 
         #Load LSTM

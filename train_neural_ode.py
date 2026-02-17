@@ -23,14 +23,14 @@ criterion = torch.nn.MSELoss()
 
 # Training
 print("\nTraining Neural ODE...")
-losses =  train_ode(model, 500, optimizer, criterion, true_traj=true_traj, t=t, y0=y0, file_name="neural_ode_sine_500.pth")
+losses =  train_ode(model, 1000, optimizer, criterion, true_traj=true_traj, t=t, y0=y0, file_name="neural_ode_sine_1000.pth")
 
 # Plotting
 print("\nGenerating plots...")
-plot_loss(losses, file_name="Losses (sine-500).png")
+plot_loss(losses, file_name="Losses (sine-1000).png")
 
 #3xtrapolating one
 single_y0 = y0[0:1]
 single_true = true_traj[:, 0:1, :]
 t_future, state_future = extrapolate(model, t, single_true[:, 0, :], device=device, t_max=6*torch.pi)
-plot_sine_extrapolation(t, single_true[:, 0, :], t_future, state_future, true_func=true_func, file_name="single_extrapolation (sine-500).png", model=model, device=device)
+plot_sine_extrapolation(t, single_true[:, 0, :], t_future, state_future, true_func=true_func, file_name="single_extrapolation (sine-1000).png", model=model, device=device)
