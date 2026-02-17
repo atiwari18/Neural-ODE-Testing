@@ -19,15 +19,15 @@ def generate_sines(node, future_vals, t, single_true, device, true_func, lstm, s
 
     for v in future_vals:
         t_future, state_future = extrapolate(node, t, single_true[:, 0, :], device=device, t_max=v)
-        plot_sine_extrapolation(t, single_true[:, 0, :], t_future, state_future, true_func=true_func, file_name=f"node_sine_extrapolation_1000 ({v}).png", model=node, device=device)
+        plot_sine_extrapolation(t, single_true[:, 0, :], t_future, state_future, true_func=true_func, file_name=f"node_sine_extrapolation_1000 (test-{v}).png", model=node, device=device)
 
-    # #loop for lstm
-    # for v in future_vals:
-    #     lstm_all, t_all = lstm.rollout(seed, t_train=t, t_max=v, device=device)
-    #     lstm_all = lstm_all[:, 0, :]
-    #     plot_lstm_sine_extrapolation(t_train=t, state_train=single_true[:, 0, :], 
-    #                          t_all=t_all, lstm_all=lstm_all, 
-    #                          true_func=true_func, t_max=v, file_name=f"lstm_sine_extrapolation ({v}).png", device=device)
+    #loop for lstm
+    for v in future_vals:
+        lstm_all, t_all = lstm.rollout(seed, t_train=t, t_max=v, device=device)
+        lstm_all = lstm_all[:, 0, :]
+        plot_lstm_sine_extrapolation(t_train=t, state_train=single_true[:, 0, :], 
+                             t_all=t_all, lstm_all=lstm_all, 
+                             true_func=true_func, t_max=v, file_name=f"lstm_sine_extrapolation (test-{v}).png", device=device)
 
     print(f"Generated all plots for future_vals: [12π, 24π, 48π]")
 

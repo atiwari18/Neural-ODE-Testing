@@ -198,5 +198,5 @@ if __name__ == '__main__':
     # plot_spiral(t, y0, true_traj, title="True Spiral Dynamics", file_name="true_spirals.png")
 
     true_func = SineDynamics()
-    t, y0, true_traj = generate_sine(true_func, batch_size=8, n_samples=100)
-    plot_samples(t, y0, true_traj, title="True Sine Dynamics", file_name="true_sine.png")
+    t, y0, true_traj = generate_sine(true_func, batch_size=16, n_samples=100)
+    plot_spiral(t, y0, true_traj, title="Sine Phase Space", file_name="true_sine_phase.png")
