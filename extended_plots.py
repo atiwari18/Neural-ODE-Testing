@@ -1,4 +1,4 @@
-from models.neural_ode import ODEFunc, extrapolate, plot_sine_extrapolation
+from models.neural_ode import ODEFunc, extrapolate, plot_sine_extrapolation, plot_learned_dynamics_vs_true
 from models.lstm import LSTM, plot_lstm_sine_extrapolation
 from dataset.data import SineDynamics, generate_sine, generate_spiral
 import torch
@@ -11,6 +11,7 @@ def parse_args():
         action="store_true", 
         help="Generate sine extrapolation for future vals [12π, 24π, 48π]"
     )
+    parser.add_argument("--node_dynamics", action="store_true")
 
     return parser.parse_args()
 
@@ -18,15 +19,15 @@ def generate_sines(node, future_vals, t, single_true, device, true_func, lstm, s
 
     for v in future_vals:
         t_future, state_future = extrapolate(node, t, single_true[:, 0, :], device=device, t_max=v)
-        plot_sine_extrapolation(t, single_true[:, 0, :], t_future, state_future, true_func=true_func, file_name=f"sine_extrapolation ({v}).png", model=node, device=device)
+        plot_sine_extrapolation(t, single_true[:, 0, :], t_future, state_future, true_func=true_func, file_name=f"sine_extrapolation_500 ({v}).png", model=node, device=device)
 
     #loop for lstm
-    for v in future_vals:
-        lstm_all, t_all = lstm.rollout(seed, t_train=t, t_max=v, device=device)
-        lstm_all = lstm_all[:, 0, :]
-        plot_lstm_sine_extrapolation(t_train=t, state_train=single_true[:, 0, :], 
-                             t_all=t_all, lstm_all=lstm_all, 
-                             true_func=true_func, t_max=v, file_name=f"lstm_sine_extrapolation ({v}).png", device=device)
+    # for v in future_vals:
+    #     lstm_all, t_all = lstm.rollout(seed, t_train=t, t_max=v, device=device)
+    #     lstm_all = lstm_all[:, 0, :]
+    #     plot_lstm_sine_extrapolation(t_train=t, state_train=single_true[:, 0, :], 
+    #                          t_all=t_all, lstm_all=lstm_all, 
+    #                          true_func=true_func, t_max=v, file_name=f"lstm_sine_extrapolation ({v}).png", device=device)
 
     print(f"Generated all plots for future_vals: [12π, 24π, 48π]")
 
@@ -53,7 +54,7 @@ if __name__ == '__main__':
 
         #load Neural ODE
         node = ODEFunc(time_invariant=True).to(device)
-        weights = torch.load(".\\Results\\neural_ode_sine.pth", weights_only=True)
+        weights = torch.load(".\\Results\\neural_ode_sine_500.pth", weights_only=True)
         node.load_state_dict(weights)
 
         #Load LSTM
@@ -69,5 +70,19 @@ if __name__ == '__main__':
         seed = single[:20].unsqueeze(0).to(device)
 
         generate_sines(node, future_vals, t, single_true, device, true_func, lstm, seed)
+
+    elif args.node_dynamics:
+        #load Neural ODE
+        node = ODEFunc(time_invariant=True).to(device)
+        weights = torch.load(".\\Results\\neural_ode_sine_500.pth", weights_only=True)
+        node.load_state_dict(weights)
+
+        plot_learned_dynamics_vs_true(node, device, file_name="learned vs. true (sine-500).png")
+
+        print("Learned vs. True for Neural ODE printed!")
+
+
+
+
        
 

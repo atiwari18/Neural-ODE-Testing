@@ -256,19 +256,6 @@ def plot_spiral_extrapolation(t_train, state_train, state_future, true_func=None
     plt.savefig(os.path.join(results_dir, file_name), dpi=150, bbox_inches='tight')
     print(f"Plot saved to: {os.path.join(results_dir, file_name)}")
 
-
-def evaluate_on_holdout(model, criterion, t_test, data_test):
-    """
-    Evaluate the trained model on a hold-out test set.
-    Uses the initial condition from test data and integrates through test timepoints.
-    """
-    model.eval()
-    with torch.no_grad():
-        # Integrate from first test point through all test timepoints
-        pred_state = odeint(model, data_test[0:1], t_test)
-        loss = criterion(pred_state, data_test)
-    return loss.item()
-
 def plot_comparison(true_func, learned_func, device, file_name="True vs. Learned Dynamics.png", n_trajectories=5):
     fig, axes = plt.subplots(1, 2, figsize=(14, 6))
     
