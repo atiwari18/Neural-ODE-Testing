@@ -1,4 +1,4 @@
-from models.neural_ode import ODEFunc, extrapolate, plot_sine_extrapolation, plot_learned_dynamics_vs_true, plot_comparison
+from models.neural_ode import AugmentedNODEFunc, ODEFunc, extrapolate, plot_sine_extrapolation, plot_learned_dynamics_vs_true, plot_comparison
 from models.lstm import LSTM, plot_lstm_sine_extrapolation
 from dataset.data import SineDynamics, generate_sine, generate_spiral
 import torch
@@ -18,7 +18,7 @@ def parse_args():
 
     return parser.parse_args()
 
-def plot_nfe_comparison(labels, nfes, file_name="nfe_by_horizon.png"):
+def plot_nfe_comparison(labels, nfes, file_name="nfe_by_horizon_anode.png"):
     plt.figure(figsize=(8, 5))
     bars = plt.bar(labels, nfes, color='steelblue', edgecolor='black', width=0.5)
     
@@ -54,15 +54,15 @@ def generate_sines(node, future_vals, t, single_true, device, true_func, lstm, s
         t_future, state_future, nfe = extrapolate(node, t, single_true[:, 0, :], device=device, t_max=v)
         node_nfes.append(nfe)
         labels.append(f"{v/torch.pi:.0f}π")
-        plot_sine_extrapolation(t, single_true[:, 0, :], t_future, state_future, true_func=true_func, file_name=f"node_sine_extrapolation_1000 (nfes-{v/torch.pi:.0f}π).png", model=node, device=device)
+        plot_sine_extrapolation(t, single_true[:, 0, :], t_future, state_future, true_func=true_func, file_name=f"anode_extrapolation_250 (nfes-{v/torch.pi:.0f}π).png", model=node, device=device)
 
     #loop for lstm
-    for v in future_vals:
-        lstm_all, t_all = lstm.rollout(seed, t_train=t, t_max=v, device=device)
-        lstm_all = lstm_all[:, 0, :]
-        plot_lstm_sine_extrapolation(t_train=t, state_train=single_true[:, 0, :], 
-                             t_all=t_all, lstm_all=lstm_all, 
-                             true_func=true_func, t_max=v, file_name=f"lstm_sine_extrapolation (test-{v}).png", device=device)
+    # for v in future_vals:
+    #     lstm_all, t_all = lstm.rollout(seed, t_train=t, t_max=v, device=device)
+    #     lstm_all = lstm_all[:, 0, :]
+    #     plot_lstm_sine_extrapolation(t_train=t, state_train=single_true[:, 0, :], 
+    #                          t_all=t_all, lstm_all=lstm_all, 
+    #                          true_func=true_func, t_max=v, file_name=f"lstm_sine_extrapolation (test-{v}).png", device=device)
         
     plot_nfe_comparison(labels, node_nfes)
 
@@ -91,8 +91,9 @@ if __name__ == '__main__':
 
         #load Neural ODE
         node = ODEFunc(time_invariant=True).to(device)
-        weights = torch.load(".\\Results\\neural_ode_sine_1000.pth", weights_only=True)
-        node.load_state_dict(weights)
+        anode = AugmentedNODEFunc(time_invariant=True, augment_dim=2).to(device)
+        weights = torch.load(".\\Results\\anode_sine_250.pth", weights_only=True)
+        anode.load_state_dict(weights)
 
         #Load LSTM
         lstm = LSTM(input_dim=2, hidden_dim=64, num_layers=2, output_dim=2).to(device)

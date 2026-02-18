@@ -5,6 +5,63 @@ import matplotlib.pyplot as plt
 import numpy as np
 import os
  
+class AugmentedNODEFunc(nn.Module):
+    def __init__(self, input_dim=2, hidden_dim=64, 
+                 time_invariant=False, augment_dim=0):
+        super(AugmentedNODEFunc, self).__init__()
+        self.time_invariant = time_invariant
+        self.augment_dim = augment_dim
+        self.input_dim = input_dim
+        self.nfe = 0
+
+        # Network operates on augmented state
+        effective_dim = input_dim + augment_dim
+
+        if time_invariant:
+            self.net = nn.Sequential(
+                nn.Linear(effective_dim, hidden_dim),
+                nn.Tanh(),
+                nn.Linear(hidden_dim, hidden_dim),
+                nn.Tanh(),
+                nn.Linear(hidden_dim, effective_dim)
+            )
+        else:
+            self.net = nn.Sequential(
+                nn.Linear(effective_dim + 1, hidden_dim),
+                nn.Tanh(),
+                nn.Linear(hidden_dim, hidden_dim),
+                nn.Tanh(),
+                nn.Linear(hidden_dim, effective_dim + 1)
+            )
+
+        # for m in self.net.modules():
+        #     if isinstance(m, nn.Linear):
+        #         nn.init.normal_(m.weight, mean=0, std=0.1)
+        #         nn.init.constant_(m.bias, val=0)
+
+    def forward(self, t, state):
+        # state is already augmented — odeint calls this directly
+        self.nfe += 1
+
+        if not self.time_invariant:
+            batch = state.shape[0]
+            t_expanded = t.expand(batch, 1)
+            state = torch.cat((state, t_expanded), dim=1)
+
+        return self.net(state)
+
+    def augment(self, y0):
+        """Pad initial conditions with zeros for augmented dims."""
+        zeros = torch.zeros(y0.shape[0], self.augment_dim, device=y0.device)
+        return torch.cat([y0, zeros], dim=1)
+
+    def strip(self, state):
+        """Remove augmented dims from output, returning original state dims only."""
+        return state[:, :, :self.input_dim]
+
+    def reset_nfe(self):
+        self.nfe = 0
+
 class ODEFunc(nn.Module):
     def __init__(self, input_dim=2, hidden_dim=64, time_invariant=False):
         super(ODEFunc, self).__init__()
@@ -57,14 +114,19 @@ class ODEFunc(nn.Module):
     
 def train_ode(model, epochs, optimizer, criterion, true_traj, t, y0, file_name="neural_ode_sine.pth"):
     losses = []
+    is_anode = isinstance(model, AugmentedNODEFunc)
 
     # Training loop
     for epoch in range(epochs):
         optimizer.zero_grad()
+        y0_in = model.augment(y0) if is_anode else y0
 
         # Integration from t_0 up to t_final
         #[n_samples, batch_size, 2]
-        pred_state = odeint(model, y0, t, method='dopri5')
+        pred_state = odeint(model, y0_in, t, method='dopri5')
+
+        if is_anode: 
+            pred_state = model.strip(pred_state)
 
         loss = criterion(pred_state, true_traj)
         loss.backward()
@@ -113,11 +175,16 @@ def plot_loss(losses, file_name):
 
 def extrapolate(model, t_train, state_train, device, t_max=6*torch.pi):
     t_future = torch.linspace(float(t_train[-1]), t_max, 100).to(device)
+    is_anode = isinstance(model, AugmentedNODEFunc)
 
     model.reset_nfe() #reset before solving
     with torch.no_grad():
+        y0_in = model.augment(state_train[-1:]) if is_anode else state_train[-1:]
         # Use last known state as the new initial condition
-        state_future = odeint(model, state_train[-1:], t_future)
+        state_future = odeint(model, y0_in, t_future)
+
+        if is_anode:
+            state_future = model.strip(state_future)
 
     nfe = model.nfe
 
@@ -321,70 +388,56 @@ def plot_comparison(true_func, learned_func, device, y0, file_name="True vs. Lea
     print(f"Plot saved to: {os.path.join(results_dir, file_name)}")
 
 def plot_sine_extrapolation(t_train, state_train, t_future, state_future, true_func=None, file_name=None, model=None, device=None):
-    # Extract position (first dimension of state)
     t_train_np = t_train.cpu().numpy()
-    y_train = state_train[:, 0].cpu().numpy()  # Position only
-    
+    y_train = state_train[:, 0].cpu().numpy()
     t_future_np = t_future.cpu().numpy()
-    #y_future = state_future[:, 0, 0].cpu().numpy()  # Position only
-    
-    y0_train = state_train[0:1, :].to(device)  # Initial condition [1, 2]
-    
+    y0_train = state_train[0:1, :].to(device)
+    is_anode = isinstance(model, AugmentedNODEFunc)
+
     plt.figure(figsize=(14, 6))
-    
-    # Generate TRUE ground truth using the ODE solver
+
+    # Ground truth over full range
     if true_func is not None and device is not None:
         with torch.no_grad():
-            # Create dense time points for smooth ground truth
-            t_train_min = t_train[0].item()
-            t_train_max = t_future[-1].item()
-            t_gt_dense = torch.linspace(t_train_min, t_train_max, 300).to(device)
-            
-            # Solve TRUE dynamics
+            t_gt_dense = torch.linspace(t_train[0].item(), t_future[-1].item(), 300).to(device)
             state_gt = odeint(true_func, y0_train, t_gt_dense)
-            
-            # Extract position (first dimension)
-            t_gt_np = t_gt_dense.cpu().numpy()
-            y_gt = state_gt[:, 0, 0].cpu().numpy()
-            
-            # Plot ground truth
-            plt.plot(t_gt_np, y_gt, 'gray', linestyle='--', alpha=0.5, linewidth=2.5, label='True Dynamics (Ground Truth)')
-    
-    # Plot learned trajectory through training region
+            plt.plot(t_gt_dense.cpu().numpy(), state_gt[:, 0, 0].cpu().numpy(),'gray', linestyle='--', 
+                     alpha=0.5, linewidth=2.5, label='True Dynamics (Ground Truth)')
+
+    # Learned trajectory over training region — re-integrate just the training span
     if model is not None and device is not None:
         with torch.no_grad():
-            #Generate single time span that covers BOTH training and future
-            t_full = torch.linspace(t_train_np[0].item(), t_future_np[-1].item(), 500).to(device)
-            
-            # Integrate model through training region
-            state_full = odeint(model, y0_train, t_full)
-            
-            # Extract position
-            t_full_np = t_full.cpu().numpy()
-            y_train_pred = state_full[:, 0, 0].cpu().numpy()
-            
-            # Plot learned trajectory in training region
-            plt.plot(t_full_np, y_train_pred, 'green', linewidth=2.5, alpha=0.8, label='Learned Dynamics (Training Region)')
-    
-    # Training data points
-    plt.scatter(t_train_np, y_train, c='red', s=40, alpha=0.7, zorder=5, label='Training Observations')
-    
-    # Mark boundaries
-    plt.axvline(x=t_train_np[-1], color='orange', linestyle=':', linewidth=2, alpha=0.7, label='End of Training Data')
-    
+            t_train_dense = torch.linspace(t_train_np[0], t_train_np[-1], 300).to(device)
+            y0_in = model.augment(y0_train) if is_anode else y0_train
+            state_train_pred = odeint(model, y0_in, t_train_dense)
+           
+            if is_anode:
+                state_train_pred = model.strip(state_train_pred)
+
+            plt.plot(t_train_dense.cpu().numpy(),state_train_pred[:, 0, 0].cpu().numpy(),
+                    'green', linewidth=2.5, alpha=0.8, label='Learned Dynamics (Training Region)')
+
+    #state_future shape: [T, 1, 2] from extrapolate()
+    y_future = state_future[:, 0, 0].cpu().numpy()
+    plt.plot(t_future_np, y_future, 'blue', linewidth=2.5, alpha=0.8,
+            label='Extrapolation')
+
+    # Training observations
+    plt.scatter(t_train_np, y_train, c='red', s=40, alpha=0.7,
+               zorder=5, label='Training Observations')
+    plt.axvline(x=t_train_np[-1], color='orange', linestyle=':',
+               linewidth=2, alpha=0.7, label='End of Training Data')
+
     plt.title("Neural ODE: Sine Wave Extrapolation", fontsize=14, fontweight='bold')
     plt.xlabel("Time (t)", fontsize=12)
     plt.ylabel("Position (y)", fontsize=12)
     plt.legend(fontsize=10, loc='best')
     plt.grid(True, alpha=0.3)
-    
-    # Save
+
     script_path = os.path.abspath(__file__)
-    script_dir = os.path.dirname(script_path)
-    project_root = os.path.dirname(script_dir)
-    results_dir = os.path.join(project_root, 'Results')
+    results_dir = os.path.join(os.path.dirname(os.path.dirname(script_path)), 'Results')
     os.makedirs(results_dir, exist_ok=True)
-    
     plt.savefig(os.path.join(results_dir, file_name), dpi=150, bbox_inches='tight')
     plt.close()
+
     print(f"Plot saved to: {os.path.join(results_dir, file_name)}")
