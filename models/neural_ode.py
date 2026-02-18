@@ -266,42 +266,50 @@ def plot_spiral_extrapolation(t_train, state_train, state_future, true_func=None
     plt.savefig(os.path.join(results_dir, file_name), dpi=150, bbox_inches='tight')
     print(f"Plot saved to: {os.path.join(results_dir, file_name)}")
 
-def plot_comparison(true_func, learned_func, device, file_name="True vs. Learned Dynamics.png", n_trajectories=5):
-    fig, axes = plt.subplots(1, 2, figsize=(14, 6))
+def plot_comparison(true_func, learned_func, device, y0, file_name="True vs. Learned Dynamics.png", n_trajectories=5):
+    fig, axes = plt.subplots(1, 2, figsize=(28, 12))
     
-    # Generate test initial conditions
-    theta = torch.linspace(0, 2*np.pi, n_trajectories+1)[:-1]
-    y0 = torch.stack([
-        2.0 * torch.cos(theta),
-        2.0 * torch.sin(theta)
-    ], dim=1).to(device)
+    # Use actual training initial conditions, not manufactured ones
+    y0_subset = y0[:n_trajectories].to(device)
     
-    t = torch.linspace(0, 25, 200).to(device)
+    # Compute radii for color coding and legend
+    radii = torch.sqrt(y0_subset[:, 0]**2 + y0_subset[:, 1]**2).cpu().numpy()
     
-    # True dynamics
+    t = torch.linspace(0, 6 * np.pi, 500).to(device)
+    colors = plt.cm.plasma(np.linspace(0.1, 0.9, n_trajectories))
+    
     with torch.no_grad():
-        true_traj = odeint(true_func, y0, t, method='dopri5')
-        pred_traj = odeint(learned_func, y0, t, method='dopri5')
+        true_traj = odeint(true_func, y0_subset, t, method='dopri5')
+        pred_traj = odeint(learned_func, y0_subset, t, method='dopri5')
     
-    # Plot true spirals
     for i in range(n_trajectories):
-        traj = true_traj[:, i, :].cpu().numpy()
-        axes[0].plot(traj[:, 0], traj[:, 1], 'b-', alpha=0.6)
-        axes[0].scatter(traj[0, 0], traj[0, 1], c='green', s=50, zorder=5)
+        true_np = true_traj[:, i, :].cpu().numpy()
+        pred_np = pred_traj[:, i, :].cpu().numpy()
+        
+        axes[0].plot(true_np[:, 0], true_np[:, 1], '-', color=colors[i],
+                    alpha=0.85, linewidth=1.8, label=f'r={radii[i]:.2f}')
+        axes[0].scatter(true_np[0, 0], true_np[0, 1], color=colors[i], s=60,
+                       zorder=5, edgecolors='black', linewidth=0.8)
+        
+        axes[1].plot(pred_np[:, 0], pred_np[:, 1], '-', color=colors[i],
+                    alpha=0.85, linewidth=1.8, label=f'r={radii[i]:.2f}')
+        axes[1].scatter(pred_np[0, 0], pred_np[0, 1], color=colors[i], s=60,
+                       zorder=5, edgecolors='black', linewidth=0.8)
     
-    axes[0].set_title("True Dynamics")
-    axes[0].set_xlabel("x")
-    axes[0].set_ylabel("y")
-    axes[0].grid(True, alpha=0.3)
-    axes[0].axis('equal')
+    for ax, title in zip(axes, ["True Dynamics (Phase Portrait)", 
+                                 "Learned Dynamics (Phase Portrait)"]):
+        ax.set_title(title, fontsize=12, fontweight='bold')
+        ax.set_xlabel("Position (y)", fontsize=11)
+        ax.set_ylabel("Velocity (v)", fontsize=11)
+        ax.legend(fontsize=9, loc='upper right')
+        ax.grid(True, alpha=0.3)
+        ax.axis('equal')
     
-    # Plot learned spirals
-    for i in range(n_trajectories):
-        traj = pred_traj[:, i, :].cpu().numpy()
-        axes[1].plot(traj[:, 0], traj[:, 1], 'r-', alpha=0.6)
-        axes[1].scatter(traj[0, 0], traj[0, 1], c='green', s=50, zorder=5)
+    plt.suptitle("Neural ODE Phase Space: Harmonic Oscillator\n"
+                 "(Spiral drift = trajectory crossing failure)",
+                 fontsize=13, fontweight='bold', y=1.02)
+    plt.tight_layout()
     
-    # Save
     script_path = os.path.abspath(__file__)
     script_dir = os.path.dirname(script_path)
     project_root = os.path.dirname(script_dir)
@@ -309,6 +317,7 @@ def plot_comparison(true_func, learned_func, device, file_name="True vs. Learned
     os.makedirs(results_dir, exist_ok=True)
     
     plt.savefig(os.path.join(results_dir, file_name), dpi=150, bbox_inches='tight')
+    plt.close()
     print(f"Plot saved to: {os.path.join(results_dir, file_name)}")
 
 def plot_sine_extrapolation(t_train, state_train, t_future, state_future, true_func=None, file_name=None, model=None, device=None):
