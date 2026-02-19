@@ -13,6 +13,9 @@ def parse_args():
         action="store_true", 
         help="Generate sine extrapolation for future vals [12π, 24π, 48π]"
     )
+
+    parser.add_argument("--node", action="store_true")
+    parser.add_argument("--lstm", action="store_true")
     parser.add_argument("--node_dynamics", action="store_true")
     parser.add_argument("--plot_comparison", action="store_true")
 
@@ -46,25 +49,27 @@ def plot_nfe_comparison(labels, nfes, file_name="nfe_by_horizon_node (sine-1000)
 
     print(f"NFE plot saved to: {full_path}")
 
-def generate_sines(ode_model, future_vals, t, single_true, device, true_func, lstm, seed):
+def generate_sines(ode_model, future_vals, t, single_true, device, true_func, lstm, seed, is_node=False, is_lstm=True):
     node_nfes = []
     labels = []
 
-    for v in future_vals:
-        t_future, state_future, nfe = extrapolate(node, t, single_true[:, 0, :], device=device, t_max=v)
-        node_nfes.append(nfe)
-        labels.append(f"{v/torch.pi:.0f}π")
-        plot_sine_extrapolation(t, single_true[:, 0, :], t_future, state_future, true_func=true_func, file_name=f"node_sine_1000-test ({v/torch.pi:.0f}π).png", model=ode_model, device=device)
+    if is_node:
+        for v in future_vals:
+            t_future, state_future, nfe = extrapolate(node, t, single_true[:, 0, :], device=device, t_max=v)
+            node_nfes.append(nfe)
+            labels.append(f"{v/torch.pi:.0f}π")
+            plot_sine_extrapolation(t, single_true[:, 0, :], t_future, state_future, true_func=true_func, file_name=f"node_sine_1000 ({v/torch.pi:.0f}π).png", model=ode_model, device=device)
+            plot_nfe_comparison(labels, node_nfes, file_name="node_sine_1000-nfes.png")
 
     #loop for lstm
-    # for v in future_vals:
-    #     lstm_all, t_all = lstm.rollout(seed, t_train=t, t_max=v, device=device)
-    #     lstm_all = lstm_all[:, 0, :]
-    #     plot_lstm_sine_extrapolation(t_train=t, state_train=single_true[:, 0, :], 
-    #                          t_all=t_all, lstm_all=lstm_all, 
-    #                          true_func=true_func, t_max=v, file_name=f"lstm_sine_extrapolation (test-{v}).png", device=device)
+    if is_lstm:
+        for v in future_vals:
+            lstm_all, t_all = lstm.rollout(seed, t_train=t, t_max=v, device=device)
+            lstm_all = lstm_all[:, 0, :]
+            plot_lstm_sine_extrapolation(t_train=t, state_train=single_true[:, 0, :], 
+                                t_all=t_all, lstm_all=lstm_all, 
+                                true_func=true_func, t_max=v, file_name=f"lstm_sine_extrapolation (test-{v}).png", device=device)
         
-    plot_nfe_comparison(labels, node_nfes, file_name="node_sine_1000-test (sine-500-3).png")
 
     print(f"Generated all plots for future_vals: [{future_vals[0]/torch.pi:.0f}π, {future_vals[1]/torch.pi:.0f}π, {future_vals[2]/torch.pi:.0f}π]")
 
@@ -79,7 +84,7 @@ if __name__ == '__main__':
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
 
-    if args.sine:
+    if args.sine and args.node:
         #Load Data
         print("Loading Data...")
         true_func = SineDynamics(device=device).to(device)
@@ -92,8 +97,8 @@ if __name__ == '__main__':
         #load Neural ODE
         node = ODEFunc(time_invariant=True).to(device)
         anode = AugmentedNODEFunc(time_invariant=True, augment_dim=1).to(device)
-        weights = torch.load(".\\Results\\neural_ode_sine_1000.pth", weights_only=True)
-        node.load_state_dict(weights)
+        weights = torch.load(".\\Results\\anode_sine_500-3.pth", weights_only=True)
+        anode.load_state_dict(weights)
 
         #Load LSTM
         lstm = LSTM(input_dim=2, hidden_dim=64, num_layers=2, output_dim=2).to(device)
@@ -107,7 +112,11 @@ if __name__ == '__main__':
         single = true_traj[:, 0, :]
         seed = single[:20].unsqueeze(0).to(device)
 
-        generate_sines(node, future_vals, t, single_true, device, true_func, lstm, seed)
+        #Existence Bools
+        is_node = args.node
+        is_lstm = args.lstm
+
+        generate_sines(node, future_vals, t, single_true, device, true_func, lstm, seed, is_node=is_node, is_lstm=is_lstm)
 
     elif args.node_dynamics:
         #load Neural ODE
