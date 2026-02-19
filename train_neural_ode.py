@@ -18,20 +18,20 @@ print(f"State shape: y{y0.shape}")
 
 # Create model, optimizer and criterion
 #model = ODEFunc(time_invariant=True, augment_dim=2)
-model = AugmentedNODEFunc(time_invariant=True, augment_dim=2).to(device)
+model = AugmentedNODEFunc(time_invariant=True, augment_dim=1).to(device)
 optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 criterion = torch.nn.MSELoss()
 
 # Training
 print("\nTraining Neural ODE...")
-losses =  train_ode(model, 250, optimizer, criterion, true_traj=true_traj, t=t, y0=y0, file_name="anode_sine_250.pth")
+losses =  train_ode(model, 500, optimizer, criterion, true_traj=true_traj, t=t, y0=y0, file_name="anode_sine_500-3.pth")
 
 # Plotting
 print("\nGenerating plots...")
-plot_loss(losses, file_name="ANODE Losses (sine-250).png")
+plot_loss(losses, file_name="ANODE Losses (sine-500-3).png")
 
 #3xtrapolating one
 single_y0 = y0[0:1]
 single_true = true_traj[:, 0:1, :]
 t_future, state_future, nfe = extrapolate(model, t, single_true[:, 0, :], device=device, t_max=6*torch.pi)
-plot_sine_extrapolation(t, single_true[:, 0, :], t_future, state_future, true_func=true_func, file_name="ANODE_single_extrapolation (sine-250).png", model=model, device=device)
+plot_sine_extrapolation(t, single_true[:, 0, :], t_future, state_future, true_func=true_func, file_name="ANODE_single_extrapolation (sine-500-3).png", model=model, device=device)

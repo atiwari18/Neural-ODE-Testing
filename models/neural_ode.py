@@ -34,10 +34,10 @@ class AugmentedNODEFunc(nn.Module):
                 nn.Linear(hidden_dim, effective_dim + 1)
             )
 
-        # for m in self.net.modules():
-        #     if isinstance(m, nn.Linear):
-        #         nn.init.normal_(m.weight, mean=0, std=0.1)
-        #         nn.init.constant_(m.bias, val=0)
+        for m in self.net.modules():
+            if isinstance(m, nn.Linear):
+                nn.init.normal_(m.weight, mean=0, std=0.1)
+                nn.init.constant_(m.bias, val=0)
 
     def forward(self, t, state):
         # state is already augmented — odeint calls this directly
@@ -174,21 +174,21 @@ def plot_loss(losses, file_name):
 
 
 def extrapolate(model, t_train, state_train, device, t_max=6*torch.pi):
-    t_future = torch.linspace(float(t_train[-1]), t_max, 100).to(device)
+    t_full = torch.linspace(float(t_train[0]), t_max, 500).to(device)
     is_anode = isinstance(model, AugmentedNODEFunc)
 
     model.reset_nfe() #reset before solving
     with torch.no_grad():
-        y0_in = model.augment(state_train[-1:]) if is_anode else state_train[-1:]
+        y0_in = model.augment(state_train[0:1]) if is_anode else state_train[0:1]
         # Use last known state as the new initial condition
-        state_future = odeint(model, y0_in, t_future)
+        state_full = odeint(model, y0_in, t_full)
 
         if is_anode:
-            state_future = model.strip(state_future)
+            state_full = model.strip(state_full)
 
     nfe = model.nfe
 
-    return t_future, state_future, nfe
+    return t_full, state_full, nfe
 
 def plot_learned_dynamics_vs_true(model, device, file_name, y_range=(-1.5, 1.5), n_points=30):
     """
@@ -387,46 +387,41 @@ def plot_comparison(true_func, learned_func, device, y0, file_name="True vs. Lea
     plt.close()
     print(f"Plot saved to: {os.path.join(results_dir, file_name)}")
 
-def plot_sine_extrapolation(t_train, state_train, t_future, state_future, true_func=None, file_name=None, model=None, device=None):
+def plot_sine_extrapolation(t_train, state_train, t_full, state_full, true_func=None, file_name=None, model=None, device=None):
     t_train_np = t_train.cpu().numpy()
     y_train = state_train[:, 0].cpu().numpy()
-    t_future_np = t_future.cpu().numpy()
     y0_train = state_train[0:1, :].to(device)
-    is_anode = isinstance(model, AugmentedNODEFunc)
+
+    t_full_np = t_full.cpu().numpy()
+    y_full    = state_full[:, 0, 0].cpu().numpy()
+
+    # Split the single trajectory at the training boundary for coloring
+    t_end       = t_train_np[-1]
+    train_mask  = t_full_np <= t_end
+    extrap_mask = t_full_np >= t_end
 
     plt.figure(figsize=(14, 6))
 
     # Ground truth over full range
     if true_func is not None and device is not None:
         with torch.no_grad():
-            t_gt_dense = torch.linspace(t_train[0].item(), t_future[-1].item(), 300).to(device)
-            state_gt = odeint(true_func, y0_train, t_gt_dense)
-            plt.plot(t_gt_dense.cpu().numpy(), state_gt[:, 0, 0].cpu().numpy(),'gray', linestyle='--', 
-                     alpha=0.5, linewidth=2.5, label='True Dynamics (Ground Truth)')
+            t_gt = torch.linspace(t_full[0].item(), t_full[-1].item(), 500).to(device)
+            state_gt = odeint(true_func, y0_train, t_gt)
+            plt.plot(t_gt.cpu().numpy(), state_gt[:, 0, 0].cpu().numpy(),
+                     'gray', linestyle='--', alpha=0.5, linewidth=2.5,
+                     label='True Dynamics (Ground Truth)')
 
-    # Learned trajectory over training region — re-integrate just the training span
-    if model is not None and device is not None:
-        with torch.no_grad():
-            t_train_dense = torch.linspace(t_train_np[0], t_train_np[-1], 300).to(device)
-            y0_in = model.augment(y0_train) if is_anode else y0_train
-            state_train_pred = odeint(model, y0_in, t_train_dense)
-           
-            if is_anode:
-                state_train_pred = model.strip(state_train_pred)
+    # Single continuous model trajectory — coloured green (train) then blue (extrap)
+    plt.plot(t_full_np[train_mask],  y_full[train_mask],  'green', linewidth=2.5, alpha=0.8,
+             label='Learned Dynamics (Training Region)')
+    plt.plot(t_full_np[extrap_mask], y_full[extrap_mask], 'blue',  linewidth=2.5, alpha=0.8,
+             label='Extrapolation')
 
-            plt.plot(t_train_dense.cpu().numpy(),state_train_pred[:, 0, 0].cpu().numpy(),
-                    'green', linewidth=2.5, alpha=0.8, label='Learned Dynamics (Training Region)')
-
-    #state_future shape: [T, 1, 2] from extrapolate()
-    y_future = state_future[:, 0, 0].cpu().numpy()
-    plt.plot(t_future_np, y_future, 'blue', linewidth=2.5, alpha=0.8,
-            label='Extrapolation')
-
-    # Training observations
+     # Training observations
     plt.scatter(t_train_np, y_train, c='red', s=40, alpha=0.7,
-               zorder=5, label='Training Observations')
-    plt.axvline(x=t_train_np[-1], color='orange', linestyle=':',
-               linewidth=2, alpha=0.7, label='End of Training Data')
+                zorder=5, label='Training Observations')
+    plt.axvline(x=t_end, color='orange', linestyle=':',
+                linewidth=2, alpha=0.7, label='End of Training Data')
 
     plt.title("Neural ODE: Sine Wave Extrapolation", fontsize=14, fontweight='bold')
     plt.xlabel("Time (t)", fontsize=12)

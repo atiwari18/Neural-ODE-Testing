@@ -18,7 +18,7 @@ def parse_args():
 
     return parser.parse_args()
 
-def plot_nfe_comparison(labels, nfes, file_name="nfe_by_horizon_anode.png"):
+def plot_nfe_comparison(labels, nfes, file_name="nfe_by_horizon_node (sine-1000).png"):
     plt.figure(figsize=(8, 5))
     bars = plt.bar(labels, nfes, color='steelblue', edgecolor='black', width=0.5)
     
@@ -46,7 +46,7 @@ def plot_nfe_comparison(labels, nfes, file_name="nfe_by_horizon_anode.png"):
 
     print(f"NFE plot saved to: {full_path}")
 
-def generate_sines(node, future_vals, t, single_true, device, true_func, lstm, seed):
+def generate_sines(ode_model, future_vals, t, single_true, device, true_func, lstm, seed):
     node_nfes = []
     labels = []
 
@@ -54,7 +54,7 @@ def generate_sines(node, future_vals, t, single_true, device, true_func, lstm, s
         t_future, state_future, nfe = extrapolate(node, t, single_true[:, 0, :], device=device, t_max=v)
         node_nfes.append(nfe)
         labels.append(f"{v/torch.pi:.0f}π")
-        plot_sine_extrapolation(t, single_true[:, 0, :], t_future, state_future, true_func=true_func, file_name=f"anode_extrapolation_250 (nfes-{v/torch.pi:.0f}π).png", model=node, device=device)
+        plot_sine_extrapolation(t, single_true[:, 0, :], t_future, state_future, true_func=true_func, file_name=f"node_sine_1000-test ({v/torch.pi:.0f}π).png", model=ode_model, device=device)
 
     #loop for lstm
     # for v in future_vals:
@@ -64,7 +64,7 @@ def generate_sines(node, future_vals, t, single_true, device, true_func, lstm, s
     #                          t_all=t_all, lstm_all=lstm_all, 
     #                          true_func=true_func, t_max=v, file_name=f"lstm_sine_extrapolation (test-{v}).png", device=device)
         
-    plot_nfe_comparison(labels, node_nfes)
+    plot_nfe_comparison(labels, node_nfes, file_name="node_sine_1000-test (sine-500-3).png")
 
     print(f"Generated all plots for future_vals: [{future_vals[0]/torch.pi:.0f}π, {future_vals[1]/torch.pi:.0f}π, {future_vals[2]/torch.pi:.0f}π]")
 
@@ -74,7 +74,7 @@ def generate_sines(node, future_vals, t, single_true, device, true_func, lstm, s
 if __name__ == '__main__':
     args = parse_args()
 
-    future_vals = [12 * torch.pi, 24 * torch.pi, 48 * torch.pi]
+    future_vals = [6 * torch.pi, 8 * torch.pi, 10 * torch.pi]
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
@@ -91,9 +91,9 @@ if __name__ == '__main__':
 
         #load Neural ODE
         node = ODEFunc(time_invariant=True).to(device)
-        anode = AugmentedNODEFunc(time_invariant=True, augment_dim=2).to(device)
-        weights = torch.load(".\\Results\\anode_sine_250.pth", weights_only=True)
-        anode.load_state_dict(weights)
+        anode = AugmentedNODEFunc(time_invariant=True, augment_dim=1).to(device)
+        weights = torch.load(".\\Results\\neural_ode_sine_1000.pth", weights_only=True)
+        node.load_state_dict(weights)
 
         #Load LSTM
         lstm = LSTM(input_dim=2, hidden_dim=64, num_layers=2, output_dim=2).to(device)
