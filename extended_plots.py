@@ -124,19 +124,20 @@ if __name__ == '__main__':
         plot_learned_dynamics_vs_true(node, device, file_name="learned vs. true (sine-500).png")
 
     elif args.plot_comparison:
-        plot_comparison(true_func, node, device, y0=y0, file_name="comparison_sine_1000.png")
+        plot_comparison(true_func, anode, device, y0=y0, file_name="anode_comparison_sine.png")
 
     elif args.plot_clean:
-        clean_y0 = torch.tensor([[1.0, 0.0]], device=device)  # position=1, velocity=0
+        clean_y0 = torch.tensor([[-0.55, 0.0]], device=device)  # position=1, velocity=0
         clean_true = odeint(true_func, clean_y0, t)            # shape: [n_samples, 1, 2]
         t_future, state_future, nfe = extrapolate(
             anode, t, clean_true[:, 0, :], device=device, t_max=48*torch.pi
         )
+        
 
         plot_sine_extrapolation(
             t, clean_true[:, 0, :], t_future, state_future,
             true_func=true_func, 
-            file_name="anode-sine-500-3-reg_clean_extrapolation 48π.png", 
+            file_name="anode_clean_extrapolation-sine-500-3-reg 48π.png", 
             model=anode, device=device
         )
        

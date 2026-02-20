@@ -356,10 +356,18 @@ def plot_comparison(true_func, learned_func, device, y0, file_name="True vs. Lea
     
     t = torch.linspace(0, 6 * np.pi, 500).to(device)
     colors = plt.cm.plasma(np.linspace(0.1, 0.9, n_trajectories))
+
+    is_anode = isinstance(learned_func, AugmentedNODEFunc)
     
     with torch.no_grad():
         true_traj = odeint(true_func, y0_subset, t, method='dopri5')
-        pred_traj = odeint(learned_func, y0_subset, t, method='dopri5')
+
+        if is_anode:
+            y0_aug = learned_func.augment(y0_subset)
+            pred_traj_full = odeint(learned_func, y0_aug, t, method='dopri5')
+            pred_traj = pred_traj_full[:, :, :learned_func.input_dim]
+        else:
+            pred_traj = odeint(learned_func, y0_subset, t, method='dopri5')
     
     for i in range(n_trajectories):
         true_np = true_traj[:, i, :].cpu().numpy()
