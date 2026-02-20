@@ -60,8 +60,8 @@ def generate_sines(ode_model, future_vals, t, single_true, device, true_func, ls
             t_future, state_future, nfe = extrapolate(node, t, single_true[:, 0, :], device=device, t_max=v)
             node_nfes.append(nfe)
             labels.append(f"{v/torch.pi:.0f}π")
-            plot_sine_extrapolation(t, single_true[:, 0, :], t_future, state_future, true_func=true_func, file_name=f"node_sine_1000 ({v/torch.pi:.0f}π).png", model=ode_model, device=device)
-            plot_nfe_comparison(labels, node_nfes, file_name="node_sine_1000-nfes.png")
+            plot_sine_extrapolation(t, single_true[:, 0, :], t_future, state_future, true_func=true_func, file_name=f"anode_sine_500-3-reg ({v/torch.pi:.0f}π).png", model=ode_model, device=device)
+            plot_nfe_comparison(labels, node_nfes, file_name="anode_sine_500-3-reg-nfes.png")
 
     #loop for lstm
     if is_lstm:
@@ -98,8 +98,8 @@ if __name__ == '__main__':
     #load Neural ODE
     node = ODEFunc(time_invariant=True).to(device)
     anode = AugmentedNODEFunc(time_invariant=True, augment_dim=1).to(device)
-    weights = torch.load(".\\Results\\neural_ode_sine_1000.pth", weights_only=True)
-    node.load_state_dict(weights)
+    weights = torch.load(".\\Results\\anode_sine_500-3-reg-0.5.pth", weights_only=True)
+    anode.load_state_dict(weights)
 
     #Load LSTM
     lstm = LSTM(input_dim=2, hidden_dim=64, num_layers=2, output_dim=2).to(device)
@@ -130,14 +130,14 @@ if __name__ == '__main__':
         clean_y0 = torch.tensor([[1.0, 0.0]], device=device)  # position=1, velocity=0
         clean_true = odeint(true_func, clean_y0, t)            # shape: [n_samples, 1, 2]
         t_future, state_future, nfe = extrapolate(
-            node, t, clean_true[:, 0, :], device=device, t_max=48*torch.pi
+            anode, t, clean_true[:, 0, :], device=device, t_max=48*torch.pi
         )
 
         plot_sine_extrapolation(
             t, clean_true[:, 0, :], t_future, state_future,
             true_func=true_func, 
-            file_name="node_clean_extrapolation 48π.png", 
-            model=node, device=device
+            file_name="anode-sine-500-3-reg_clean_extrapolation 48π.png", 
+            model=anode, device=device
         )
        
 

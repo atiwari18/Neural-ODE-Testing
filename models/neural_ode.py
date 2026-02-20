@@ -112,7 +112,7 @@ class ODEFunc(nn.Module):
         return
 
     
-def train_ode(model, epochs, optimizer, criterion, true_traj, t, y0, file_name="neural_ode_sine.pth"):
+def train_ode(model, epochs, optimizer, criterion, true_traj, t, y0, reg=0.01, file_name="neural_ode_sine.pth"):
     losses = []
     is_anode = isinstance(model, AugmentedNODEFunc)
 
@@ -126,16 +126,28 @@ def train_ode(model, epochs, optimizer, criterion, true_traj, t, y0, file_name="
         pred_state = odeint(model, y0_in, t, method='dopri5')
 
         if is_anode: 
-            pred_state = model.strip(pred_state)
+            #extract augmented dimensions BEFORE stripping
+            aug_dims = pred_state[:, :, model.input_dim:]         #[T, batch, augment_dim]
+            aug_penalty = (aug_dims ** 2).mean()
 
-        loss = criterion(pred_state, true_traj)
+            pred_state = model.strip(pred_state)
+            loss = criterion(pred_state, true_traj) + (reg * aug_penalty)
+        else:
+            loss = criterion(pred_state, true_traj)
+
         loss.backward()
         optimizer.step()
 
         losses.append(loss.item())
 
         if (epoch + 1) % 10 == 0:
-            print(f"Epoch {epoch+1}/{epochs} | Loss: {loss.item():.6f}")
+            if is_anode:
+                print(f"Epoch {epoch+1}/{epochs} | "
+                    f"Loss: {loss.item():.6f} | "
+                    f"MSE: {criterion(pred_state, true_traj).item():.6f} | "
+                    f"Aug penalty: {aug_penalty.item():.6f}")
+            else:
+                print(f"Epoch {epoch+1}/{epochs} | Loss: {loss.item():.6f}")
 
     script_path = os.path.abspath(__file__)
     script_dir = os.path.dirname(script_path)
