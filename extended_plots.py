@@ -61,7 +61,8 @@ def generate_sines(ode_model, future_vals, t, single_true, device, true_func, ls
             node_nfes.append(nfe)
             labels.append(f"{v/torch.pi:.0f}π")
             plot_sine_extrapolation(t, single_true[:, 0, :], t_future, state_future, true_func=true_func, file_name=f"anode_sine_500-3-reg ({v/torch.pi:.0f}π).png", model=ode_model, device=device)
-            plot_nfe_comparison(labels, node_nfes, file_name="anode_sine_500-3-reg-nfes.png")
+            
+        plot_nfe_comparison(labels, node_nfes, file_name="anode_sine_500-3-reg-nfes.png")
 
     #loop for lstm
     if is_lstm:
@@ -81,7 +82,7 @@ def generate_sines(ode_model, future_vals, t, single_true, device, true_func, ls
 if __name__ == '__main__':
     args = parse_args()
 
-    future_vals = [6 * torch.pi, 8 * torch.pi, 10 * torch.pi]
+    future_vals = [12 * torch.pi, 24 * torch.pi, 48 * torch.pi]
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
@@ -118,7 +119,7 @@ if __name__ == '__main__':
         is_node = args.node
         is_lstm = args.lstm
 
-        generate_sines(node, future_vals, t, single_true, device, true_func, lstm, seed, is_node=is_node, is_lstm=is_lstm)
+        generate_sines(anode, future_vals, t, single_true, device, true_func, lstm, seed, is_node=is_node, is_lstm=is_lstm)
 
     elif args.node_dynamics:
         plot_learned_dynamics_vs_true(node, device, file_name="learned vs. true (sine-500).png")
@@ -127,7 +128,7 @@ if __name__ == '__main__':
         plot_comparison(true_func, anode, device, y0=y0, file_name="anode_comparison_sine.png")
 
     elif args.plot_clean:
-        clean_y0 = torch.tensor([[-0.55, 0.0]], device=device)  # position=1, velocity=0
+        clean_y0 = torch.tensor([[-1.25, 0.0]], device=device)  # position=1, velocity=0
         clean_true = odeint(true_func, clean_y0, t)            # shape: [n_samples, 1, 2]
         t_future, state_future, nfe = extrapolate(
             anode, t, clean_true[:, 0, :], device=device, t_max=48*torch.pi
@@ -137,7 +138,7 @@ if __name__ == '__main__':
         plot_sine_extrapolation(
             t, clean_true[:, 0, :], t_future, state_future,
             true_func=true_func, 
-            file_name="anode_clean_extrapolation-sine-500-3-reg 48π.png", 
+            file_name="clean-test 48π.png", 
             model=anode, device=device
         )
        
