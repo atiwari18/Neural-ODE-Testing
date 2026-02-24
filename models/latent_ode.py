@@ -134,5 +134,41 @@ def latent_ode_loss(predicted, target, z0_mean, z0_log_var, kl_weight=1.0):
 
     return total_loss
 
+def train_latent_ode(model, trajs, t, epochs=200, lr=0.001, kl_weight=1, device="cuda"):
+    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+
+    #rearrange trajectories to be [batch, n, obs_dim]
+    traj_batch = trajs.permute(1, 0, 2)
+    
+    losses = {"total": [], "recon": [], "kl": []}
+
+    model.train()
+    for epoch in range(epochs):
+        optimizer.zero_grad()
+
+        #forward pass
+        predicted, z0_mean, z0_logvar = model(traj_batch, t, t)
+
+        #compute loss
+        total_loss, recon_loss, kl_loss = latent_ode_loss(predicted, trajs, z0_mean, z0_logvar, kl_weight)
+
+        #backward pass
+        total_loss.backward()
+        optimizer.step()
+
+        #Record losses 
+        losses["total"].append(total_loss.item())
+        losses["recon"].append(recon_loss.item())
+        losses["kl"].append(kl_loss.item())
+
+        if (epoch + 1) % 10 == 0 or (epoch + 1) == 1:
+            print(f"Epoch {epoch+1}/{epochs} | "
+                  f"Total: {total_loss.item():.6f} | "
+                  f"Recon: {recon_loss.item():.6f} | "
+                  f"KL: {kl_loss.item():.6f}")
+            
+    return losses
+
+
 
 
