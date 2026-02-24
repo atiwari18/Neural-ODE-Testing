@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import numpy as np
 import matplotlib.pyplot as plt
+from torchdiffeq import odeint_adjoint as odeint
 import os
 from models.neural_ode import ODEFunc
 
@@ -59,4 +60,79 @@ class Decoder(nn.Module):
             out = out.reshape(original_shape[0], original_shape[1], -1)
 
         return out
+
+class LatentODE(nn.Module):
+    def __init__(self, latent_dim=4, obs_dim=2, encoder_hidden=25, ode_hidden=20, decoder_hidden=20):
+        super(LatentODE, self).__init__()
+
+        self.latent_dim = latent_dim
+        self.obs_dim = obs_dim
+
+        #3 network components
+        self.encoder = RecognitionRNN(latent_dim, obs_dim, encoder_hidden)
+        self.ode_func = ODEFunc(latent_dim, ode_hidden)
+        self.decoder = Decoder(latent_dim, obs_dim, decoder_hidden)
+
+    def encode(self, observed_data, observed_times):
+        """
+        Enocder observation sequence into initial latent state z0.
+
+        Processes the data BACKWARDS (from last to dirst) to get z0
+        """
+        batch_size = observed_data.shape[0]
+        seq_len = observed_data.shape[1]
+
+        #initialize hidden state
+        h = self.encoder.init_hidden(batch_size, observed_data.device)
+
+        #Process observation backwards through time, this allows the RNN to
+        #accumulate information from future to past
+        for t in reversed(range(seq_len)):
+            obs = observed_data[:, t, :]
+            out, h = self.encoder(obs, h)
+
+        #split output into mean and log-variance
+        z0_mean = out[:, :self.latent_dim]
+        z0_logvar = out[:, self.latent_dim:]
+
+        return z0_mean, z0_logvar
+    
+    def reparametrize(self, mean, logvar):
+        #compute the standard deviation from logvar
+        std = torch.exp(0.5 * logvar)
+
+        #sample epsilon from standard normal
+        eps = torch.randn_like(std)
+
+        #Reparametrize = μ + σ * ε
+        return mean + eps * std
+    
+    def forward(self, observed_data, observed_times, prediction_times):
+        #Encode observations to get initial latent state
+        z0_mean, z0_var = self.encode(observed_data, observed_times)
+
+        #Sample latent using reparametrization trick
+        z0 = self.reparametrize(z0_mean, z0_var)
+
+        #Solve ODE in latent space
+        z_traj = odeint(self.ode_func, z0, prediction_times, method="dopri5")
+
+        #Decode latent trajectory to observations
+        predicted_obs = self.decoder(z_traj)
+
+        return predicted_obs, z0_mean, z0_var
+    
+def latent_ode_loss(predicted, target, z0_mean, z0_log_var, kl_weight=1.0):
+    #Reconstruction loss
+    recon_loss = torch.mean((predicted-target) ** 2)
+
+    #KL Divergence = -0.5 * Σ(1 + log(σ²) - μ² - σ²)
+    kl_loss = -0.5 * torch.sum(1 + z0_log_var - z0_mean.pow(2) - z0_log_var.exp())
+
+    #total loss 
+    total_loss = recon_loss + kl_weight * kl_loss
+
+    return total_loss
+
+
 
