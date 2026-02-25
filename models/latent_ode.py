@@ -137,7 +137,7 @@ def latent_ode_loss(predicted, target, z0_mean, z0_log_var, kl_weight=1.0):
 
     return total_loss, recon_loss, kl_loss
 
-def train_latent_ode(model, trajs, t, epochs=200, lr=0.001, kl_weight=1, device="cuda", file_name="latent_ode.pth"):
+def train_latent_ode(model, trajs, t, epochs=200, lr=0.001, kl_weight_start=0, kl_weight_end=0.01, device="cuda", file_name="latent_ode.pth"):
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
 
     #rearrange trajectories to be [batch, n, obs_dim]
@@ -147,9 +147,12 @@ def train_latent_ode(model, trajs, t, epochs=200, lr=0.001, kl_weight=1, device=
 
     model.train()
     for epoch in range(epochs):
+        #KL Annealing
+        kl_weight = kl_weight_start + (kl_weight_end - kl_weight_start) * min(epoch / (epochs * 0.5), 1.0)
+
         optimizer.zero_grad()
 
-        #forward pass
+        #forward pas
         predicted, z0_mean, z0_logvar = model(traj_batch, t, t)
 
         #compute loss
@@ -157,6 +160,7 @@ def train_latent_ode(model, trajs, t, epochs=200, lr=0.001, kl_weight=1, device=
 
         #backward pass
         total_loss.backward()
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
         optimizer.step()
 
         #Record losses 
@@ -168,7 +172,8 @@ def train_latent_ode(model, trajs, t, epochs=200, lr=0.001, kl_weight=1, device=
             print(f"Epoch {epoch+1}/{epochs} | "
                   f"Total: {total_loss.item():.6f} | "
                   f"Recon: {recon_loss.item():.6f} | "
-                  f"KL: {kl_loss.item():.6f}")
+                  f"KL: {kl_loss.item():.6f} | "
+                  f"KL Weight: {kl_weight:.6f}")
             
     script_path = os.path.abspath(__file__)
     script_dir = os.path.dirname(script_path)
@@ -306,7 +311,7 @@ if __name__ == "__main__":
     
     #Train
     print("\nTraining Latent ODE...")
-    losses = train_latent_ode(model, trajs, t, epochs=500, kl_weight=1, device=device)
+    losses = train_latent_ode(model, trajs, t, epochs=500, kl_weight_start=0, kl_weight_end=1, device=device)
     plot_loss(losses)
 
 
