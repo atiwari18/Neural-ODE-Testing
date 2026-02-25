@@ -204,6 +204,87 @@ def plot_loss(losses, file_name="Latent ODE Losses.png"):
     plt.savefig(full_path)
     print(f"Plot saved to: {full_path}")
 
+def extrapolate_latent_ode(model, observed_data, observed_times, t_max, device):
+    """
+    Extrapolate the trajectory using a latent ode
+    """
+
+    model.eval()
+
+    with torch.no_grad():
+        z0_mean, z0_logvar = model.encode(observed_data, observed_times)
+
+        #for extrapolation we need the mean
+        z0 = z0_mean
+
+        #timepoints 
+        dt = (observed_times[1] - observed_times[0]).item()
+        t_start = observed_times[0].item()
+        n = int( (t_max - t_start) / dt )
+
+        t_full = torch.linspace(t_start, t_max, n).to(device)
+
+        z_traj = odeint(model.ode_func, z0, t_full, method="dopri5")
+
+        predicted_obs = model.decoder(z_traj)
+
+    return t_full, predicted_obs, z_traj
+
+def plot_latent_ode_extrapolation(t_train, state_train, t_full, predicted_full, true_func=None, 
+                                   t_max=None,
+                                   file_name="latent_ode_extrapolation.png",
+                                   device='cpu'):
+
+    t_train_np = t_train.cpu().numpy()
+    y_train = state_train[:, 0].cpu().numpy()  # Position only
+    
+    t_full_np = t_full.cpu().numpy()
+    y_predicted = predicted_full[:, 0].cpu().numpy()  # Position only
+    
+    plt.figure(figsize=(14, 6))
+    
+    # Ground truth
+    if true_func is not None:
+        gt_end = t_max if t_max is not None else t_full[-1].item()
+        y0_train = state_train[0:1, :].to(device)
+        
+        with torch.no_grad():
+            t_gt = torch.linspace(t_train[0].item(), gt_end, 500).to(device)
+            state_gt = odeint(true_func, y0_train, t_gt)
+            plt.plot(t_gt.cpu().numpy(), state_gt[:, 0, 0].cpu().numpy(),
+                    'gray', linestyle='--', alpha=0.5, linewidth=2.5,
+                    label='True Dynamics')
+    
+    # Latent ODE prediction (full trajectory)
+    plt.plot(t_full_np, y_predicted, 'green', linewidth=2.5, alpha=0.8,
+            label='Latent ODE Trajectory')
+    
+    # Training observations
+    plt.scatter(t_train_np, y_train, c='red', s=40, alpha=0.7,
+               zorder=5, label='Training Observations')
+    
+    # Mark boundary
+    plt.axvline(x=t_train_np[-1], color='orange', linestyle=':',
+               linewidth=2, alpha=0.7, label='End of Training')
+    
+    plt.title("Latent ODE: Sine Wave Extrapolation", fontsize=14, fontweight='bold')
+    plt.xlabel("Time (t)", fontsize=12)
+    plt.ylabel("Position (y)", fontsize=12)
+    plt.legend(fontsize=10, loc='best')
+    plt.grid(True, alpha=0.3)
+    
+    # Save
+    script_path = os.path.abspath(__file__)
+    script_dir = os.path.dirname(script_path)
+    project_root = os.path.dirname(script_dir)
+    results_dir = os.path.join(project_root, 'Results')
+    os.makedirs(results_dir, exist_ok=True)
+    
+    plt.savefig(os.path.join(results_dir, file_name), dpi=150, bbox_inches='tight')
+    plt.close()
+    print(f"Plot saved to: {os.path.join(results_dir, file_name)}")
+
+
 if __name__ == "__main__":
     from dataset.data import SineDynamics, generate_sine
 
@@ -220,12 +301,13 @@ if __name__ == "__main__":
     model = LatentODE(latent_dim=4,
                       obs_dim=2, 
                       encoder_hidden=25, 
-                      ode_hidden=20,
+                      ode_hidden=64,
                       decoder_hidden=20).to(device)
     
     #Train
     print("\nTraining Latent ODE...")
-    losses = train_latent_ode(model, trajs, t, epochs=20, kl_weight=1, device=device)
+    losses = train_latent_ode(model, trajs, t, epochs=500, kl_weight=1, device=device)
+    plot_loss(losses)
 
 
 

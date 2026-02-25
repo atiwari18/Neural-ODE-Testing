@@ -1,5 +1,6 @@
 from models.neural_ode import AugmentedNODEFunc, ODEFunc, extrapolate, plot_sine_extrapolation, plot_learned_dynamics_vs_true, plot_comparison
 from models.lstm import LSTM, plot_lstm_sine_extrapolation
+from models.latent_ode import LatentODE, extrapolate_latent_ode, plot_latent_ode_extrapolation
 from dataset.data import SineDynamics, generate_sine, generate_spiral
 from torchdiffeq import odeint_adjoint as odeint
 import torch
@@ -20,6 +21,7 @@ def parse_args():
     parser.add_argument("--node_dynamics", action="store_true")
     parser.add_argument("--plot_comparison", action="store_true")
     parser.add_argument("--plot_clean", action="store_true")
+    parser.add_argument("--latent_ode", action="store_true")
 
     return parser.parse_args()
 
@@ -107,6 +109,9 @@ if __name__ == '__main__':
     lstm_weights = torch.load(".\\Results\\lstm_sine.pth", weights_only=True)
     lstm.load_state_dict(lstm_weights)
 
+    #Load Latent ODE
+    latent_ode = LatentODE(latent_dim=2, obs_dim=2, encoder_hidden=25, ode_hidden=20, decoder_hidden=20).to(device)
+
     if args.sine:
         #single values
         single_true = true_traj[:, 0:1, :]
@@ -141,5 +146,30 @@ if __name__ == '__main__':
             file_name="clean-test 48π.png", 
             model=anode, device=device
         )
+
+    elif args.latent_ode:
+        #Use first 20 timesteps as seed
+        single_traj = true_traj[:, 0, :]  # [n_points, obs_dim]
+        seq_len = 20
+        observed_data = single_traj[:seq_len].unsqueeze(0)  # [1, seq_len, obs_dim]
+        observed_times = t[:seq_len]
+        
+        #Extrapolate to 6π
+        t_full, predicted_full, z_traj = extrapolate_latent_ode(
+            latent_ode, observed_data, observed_times,
+            t_max=6*torch.pi, device=device
+        )
+        
+        #Plot extrapolation
+        plot_latent_ode_extrapolation(
+            t_train=observed_times,
+            state_train=single_traj[:seq_len],
+            t_full=t_full,
+            predicted_full=predicted_full[:, 0, :],  # Extract first batch
+            true_func=true_func,
+            t_max=6*torch.pi,
+            file_name="latent_ode_extrapolation.png",
+            device=device)
+
        
 
