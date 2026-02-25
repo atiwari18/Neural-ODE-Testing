@@ -33,6 +33,9 @@ class RecognitionRNN(nn.Module):
 
         return out, h
     
+    def init_hidden(self, batch_size, device):
+        return torch.zeros(batch_size, self.hidden_dim).to(device)
+    
 #Decoder (latent --> observation)
 class Decoder(nn.Module):
     def __init__(self, latent_dim=4, obs_dim=2, hidden_dim=20):
@@ -40,7 +43,7 @@ class Decoder(nn.Module):
 
         #MLP to decode from latent space to data space
         self.fc1 = nn.Linear(latent_dim, hidden_dim)
-        self.fc2 =nn.Linear(hidden_dim, obs_dim)
+        self.fc2 = nn.Linear(hidden_dim, obs_dim)
         self.relu = nn.ReLU(inplace=True)
 
     def forward(self, z):
@@ -70,7 +73,7 @@ class LatentODE(nn.Module):
 
         #3 network components
         self.encoder = RecognitionRNN(latent_dim, obs_dim, encoder_hidden)
-        self.ode_func = ODEFunc(latent_dim, ode_hidden)
+        self.ode_func = ODEFunc(latent_dim, ode_hidden, time_invariant=True)
         self.decoder = Decoder(latent_dim, obs_dim, decoder_hidden)
 
     def encode(self, observed_data, observed_times):
@@ -132,9 +135,9 @@ def latent_ode_loss(predicted, target, z0_mean, z0_log_var, kl_weight=1.0):
     #total loss 
     total_loss = recon_loss + kl_weight * kl_loss
 
-    return total_loss
+    return total_loss, recon_loss, kl_loss
 
-def train_latent_ode(model, trajs, t, epochs=200, lr=0.001, kl_weight=1, device="cuda"):
+def train_latent_ode(model, trajs, t, epochs=200, lr=0.001, kl_weight=1, device="cuda", file_name="latent_ode.pth"):
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
 
     #rearrange trajectories to be [batch, n, obs_dim]
@@ -167,7 +170,63 @@ def train_latent_ode(model, trajs, t, epochs=200, lr=0.001, kl_weight=1, device=
                   f"Recon: {recon_loss.item():.6f} | "
                   f"KL: {kl_loss.item():.6f}")
             
+    script_path = os.path.abspath(__file__)
+    script_dir = os.path.dirname(script_path)
+    project_root = os.path.dirname(script_dir)
+    
+    results_dir = os.path.join(project_root, 'Results')
+    os.makedirs(results_dir, exist_ok=True)
+    full_path = os.path.join(results_dir, file_name)
+
+    torch.save(model.state_dict(), full_path)
+
+    print(f"Model saved to {full_path}")
+            
     return losses
+
+def plot_loss(losses, file_name="Latent ODE Losses.png"):
+    plt.figure(figsize=(10, 6))
+    plt.plot(losses["total"], label='Training Loss')
+    plt.title('Latent ODE Training Loss Over Epochs')
+    plt.xlabel('Epoch')
+    plt.ylabel('Loss Value')
+    plt.legend()
+    plt.grid(True)
+
+    script_path = os.path.abspath(__file__)
+    script_dir = os.path.dirname(script_path)
+    project_root = os.path.dirname(script_dir)
+    
+    results_dir = os.path.join(project_root, 'Results')
+    os.makedirs(results_dir, exist_ok=True)    
+    full_path = os.path.join(results_dir, file_name)
+
+    plt.savefig(full_path)
+    print(f"Plot saved to: {full_path}")
+
+if __name__ == "__main__":
+    from dataset.data import SineDynamics, generate_sine
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    #Generate data
+    true_func = SineDynamics(device=device).to(device)
+    t, y0, trajs = generate_sine(true_func, batch_size=16, n_samples=100, t_max=4*torch.pi, device=device)
+    t = t.to(device)
+    y0 = y0.to(device)
+    trajs = trajs.to(device)
+
+    #Create Model
+    model = LatentODE(latent_dim=4,
+                      obs_dim=2, 
+                      encoder_hidden=25, 
+                      ode_hidden=20,
+                      decoder_hidden=20).to(device)
+    
+    #Train
+    print("\nTraining Latent ODE...")
+    losses = train_latent_ode(model, trajs, t, epochs=20, kl_weight=1, device=device)
+
 
 
 
