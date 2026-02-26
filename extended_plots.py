@@ -1,7 +1,7 @@
 from models.neural_ode import AugmentedNODEFunc, ODEFunc, extrapolate, plot_sine_extrapolation, plot_learned_dynamics_vs_true, plot_comparison
 from models.lstm import LSTM, plot_lstm_sine_extrapolation
-from models.latent_ode import LatentODE, extrapolate_latent_ode, plot_latent_ode_extrapolation
-from dataset.data import SineDynamics, generate_sine, generate_spiral
+from models.latent_ode import LatentODE, extrapolate_latent_ode, plot_latent_ode_extrapolation, plot_spiral_extrapolation
+from dataset.data import SineDynamics, generate_sine, generate_spiral, SpiralDynamics
 from torchdiffeq import odeint_adjoint as odeint
 import torch
 import matplotlib.pyplot as plt
@@ -23,6 +23,7 @@ def parse_args():
     parser.add_argument("--plot_comparison", action="store_true")
     parser.add_argument("--plot_clean", action="store_true")
     parser.add_argument("--latent_ode", action="store_true")
+    parser.add_argument("--spiral", action="store_true")
 
     return parser.parse_args()
 
@@ -130,8 +131,13 @@ if __name__ == '__main__':
 
     #Load Data
     print("\nLoading Data...")
-    true_func = SineDynamics(device=device).to(device)
-    t, y0, true_traj = generate_sine(true_func, batch_size=16, n_samples=100, t_max=4*torch.pi, device=device)
+    if args.sine:
+        true_func = SineDynamics(device=device).to(device)
+        t, y0, true_traj = generate_sine(true_func, batch_size=16, n_samples=100, t_max=4*torch.pi, device=device)
+    elif args.spiral:
+        true_func = SpiralDynamics(device=device).to(device)
+        t, y0, true_traj = generate_spiral(batch_size=16, n_samples=100, t_max=4*torch.pi, device=device)
+
     t = t.to(device)
     y0 = y0.to(device)
     true_traj = true_traj.to(device)
@@ -149,8 +155,8 @@ if __name__ == '__main__':
     lstm.load_state_dict(lstm_weights)
 
     #Load Latent ODE
-    latent_ode = LatentODE(latent_dim=1, obs_dim=2, encoder_hidden=25, ode_hidden=64, decoder_hidden=25).to(device)
-    latent_ode_weights = torch.load(".\\Results\\latent_ode (kl_weight-0.05_latent-1).pth", weights_only=True)
+    latent_ode = LatentODE(latent_dim=4, obs_dim=2, encoder_hidden=25, ode_hidden=64, decoder_hidden=25).to(device)
+    latent_ode_weights = torch.load(".\\Results\\latent_ode_spiral.pth", weights_only=True)
     latent_ode.load_state_dict(latent_ode_weights)
 
     if args.sine:
@@ -202,16 +208,19 @@ if __name__ == '__main__':
         )
         
         #Plot extrapolation
-        plot_latent_ode_extrapolation(
-            t_train=observed_times,
-            state_train=single_traj[:seq_len],
-            t_full=t_full,
-            predicted_full=predicted_full[:, 0, :],  # Extract first batch
-            true_func=true_func,
-            t_max=6*torch.pi,
-            file_name="latent_ode_extrapolation (kl_weight-0.05_latent-1).png",
-            device=device)
+        # plot_latent_ode_extrapolation(
+        #     t_train=observed_times,
+        #     state_train=single_traj[:seq_len],
+        #     t_full=t_full,
+        #     predicted_full=predicted_full[:, 0, :],  # Extract first batch
+        #     true_func=true_func,
+        #     t_max=6*torch.pi,
+        #     file_name="latent_ode_extrapolation (spiral-1).png",
+        #     device=device)
 
+        plot_spiral_extrapolation(t_train=observed_times, state_train=single_traj[:seq_len], t_full=t_full, 
+                                  predicted_full=predicted_full[:, 0, :], true_traj=true_traj[:, 0, :])
+        
         latent_ode.eval()
         with torch.no_grad():
             traj_batch = true_traj.permute(1, 0, 2)

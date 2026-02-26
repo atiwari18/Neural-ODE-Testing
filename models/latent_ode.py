@@ -161,7 +161,7 @@ def train_latent_ode(model, trajs, t, epochs=200, lr=0.001, kl_weight_start=0, k
 
         #backward pass
         total_loss.backward()
-        #torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
         optimizer.step()
 
         #Record losses 
@@ -290,6 +290,57 @@ def plot_latent_ode_extrapolation(t_train, state_train, t_full, predicted_full, 
     plt.close()
     print(f"Plot saved to: {os.path.join(results_dir, file_name)}")
 
+def plot_spiral_extrapolation(t_train, state_train, t_full, predicted_full, 
+                              true_traj=None,
+                              file_name="latent_ode_spiral_extrapolation.png",
+                              device='cpu'):
+    # Convert to numpy
+    state_train_np = state_train.cpu().numpy()
+    predicted_full_np = predicted_full.cpu().numpy()
+    
+    plt.figure(figsize=(10, 10))
+    
+    # Plot true full trajectory if available (for reference)
+    if true_traj is not None:
+        true_np = true_traj.cpu().numpy()
+        plt.plot(true_np[:, 0], true_np[:, 1], 'gray', linestyle='--', 
+                alpha=0.4, linewidth=2, label='True Training Trajectory')
+    
+    # Plot predicted extrapolation
+    plt.plot(predicted_full_np[:, 0], predicted_full_np[:, 1], 
+            'green', linewidth=2.5, alpha=0.8, label='Latent ODE Extrapolation')
+    
+    # Plot training observations
+    plt.scatter(state_train_np[:, 0], state_train_np[:, 1], 
+               c='red', s=40, alpha=0.7, zorder=5, label='Training Observations')
+    
+    # Mark start and end
+    plt.scatter([state_train_np[0, 0]], [state_train_np[0, 1]], 
+               c='green', s=150, marker='o', edgecolors='black', 
+               linewidth=2, zorder=10, label='Start')
+    plt.scatter([predicted_full_np[-1, 0]], [predicted_full_np[-1, 1]], 
+               c='blue', s=150, marker='x', linewidth=3, 
+               zorder=10, label='Extrapolation End')
+    
+    plt.title("Latent ODE: Spiral Extrapolation (Phase Space)", 
+             fontsize=14, fontweight='bold')
+    plt.xlabel("x", fontsize=12)
+    plt.ylabel("y", fontsize=12)
+    plt.legend(fontsize=10, loc='best')
+    plt.grid(True, alpha=0.3)
+    plt.axis('equal')
+    
+    # Save
+    script_path = os.path.abspath(__file__)
+    script_dir = os.path.dirname(script_path)
+    project_root = os.path.dirname(script_dir)
+    results_dir = os.path.join(project_root, 'Results')
+    os.makedirs(results_dir, exist_ok=True)
+    
+    plt.savefig(os.path.join(results_dir, file_name), dpi=150, bbox_inches='tight')
+    plt.close()
+    print(f"Plot saved to: {os.path.join(results_dir, file_name)}")
+
 
 if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -310,7 +361,7 @@ if __name__ == "__main__":
     
     #Train
     print("\nTraining Latent ODE...")
-    losses = train_latent_ode(model, trajs, t, epochs=500, kl_weight_start=0, kl_weight_end=0.01, device=device, file_name="latent_ode_spiral.pth")
+    losses = train_latent_ode(model, trajs, t, epochs=1000, kl_weight_start=0, kl_weight_end=0.001, device=device, file_name="latent_ode_spiral.pth")
     plot_loss(losses, file_name="Latent ODE Losses (spiral).png")
 
 
