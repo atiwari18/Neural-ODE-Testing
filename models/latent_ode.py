@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 from torchdiffeq import odeint_adjoint as odeint
 import os
 from models.neural_ode import ODEFunc
+from dataset.data import SpiralDynamics, generate_spiral
 
 #Encoder
 #This is a backwards RNN - it process the observations in reverse order to product an initial
@@ -160,7 +161,7 @@ def train_latent_ode(model, trajs, t, epochs=200, lr=0.001, kl_weight_start=0, k
 
         #backward pass
         total_loss.backward()
-        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+        #torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
         optimizer.step()
 
         #Record losses 
@@ -291,13 +292,11 @@ def plot_latent_ode_extrapolation(t_train, state_train, t_full, predicted_full, 
 
 
 if __name__ == "__main__":
-    from dataset.data import SineDynamics, generate_sine
-
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     #Generate data
-    true_func = SineDynamics(device=device).to(device)
-    t, y0, trajs = generate_sine(true_func, batch_size=16, n_samples=100, t_max=4*torch.pi, device=device)
+    true_func = SpiralDynamics(device=device).to(device)
+    t, y0, trajs = generate_spiral(batch_size=16, n_samples=100, t_max=4*torch.pi, device=device)
     t = t.to(device)
     y0 = y0.to(device)
     trajs = trajs.to(device)
@@ -307,12 +306,12 @@ if __name__ == "__main__":
                       obs_dim=2, 
                       encoder_hidden=25, 
                       ode_hidden=64,
-                      decoder_hidden=20).to(device)
+                      decoder_hidden=25).to(device)
     
     #Train
     print("\nTraining Latent ODE...")
-    losses = train_latent_ode(model, trajs, t, epochs=500, kl_weight_start=0, kl_weight_end=1, device=device)
-    plot_loss(losses)
+    losses = train_latent_ode(model, trajs, t, epochs=500, kl_weight_start=0, kl_weight_end=0.01, device=device, file_name="latent_ode_spiral.pth")
+    plot_loss(losses, file_name="Latent ODE Losses (spiral).png")
 
 
 

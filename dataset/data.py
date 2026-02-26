@@ -30,43 +30,20 @@ def generate_sine(true_func, batch_size=32, n_samples=100, t_max=4*np.pi, device
 
     return t, y0, trajectories
 
-def generate_irregular(true_func, n_samples=100, t_max=4*np.pi, noise_std=0.1, device="cpu"):
-    t = np.sort(np.random.rand(n_samples) * t_max)
-    t[0] = 0
-    t_tensor = torch.tensor(t, dtype=torch.float32).to(device)
-
-    #initial condition 
-
-    # Calculate position and velocity
-    y = np.sin(t)
-    v = np.cos(t)  # velocity = dy/dt
-
-    # Add noise to make it more "real"
-    y_noise = y + 0.1 * np.random.randn(n_samples)
-    v_noise = v + 0.1 * np.random.randn(n_samples)
-
-    # Stack into state: [position, velocity]
-    state = np.stack([y_noise, v_noise], axis=1)  # Shape: [n_samples, 2]
-
-    # Convert to tensors
-    t_tensor = torch.tensor(t).float()
-    state_tensor = torch.tensor(state).float()  # Shape: [n_samples, 2]
-
-    return t_tensor, state_tensor
-
 #True sprial dynamics
 class SpiralDynamics(nn.Module):
-    def __init__(self, device="cpu"):
+    def __init__(self, direction=1.0, device="cpu"):
         super(SpiralDynamics, self).__init__()
 
         #weight matrix for spiral
-        self.A = torch.tensor([[-0.1, -1.0], 
-                               [1.0, -0.1]], dtype=torch.float32, device=device)
+        self.A = torch.tensor([[-0.1, direction*-1.0], 
+                               [direction*1.0, -0.1]], dtype=torch.float32, device=device)
         
     def forward(self, t, y):
         return torch.mm(y, self.A.T)
 
-def generate_spiral(true_func, batch_size=32, n_samples=100, t_max=10, device="cpu"):
+def generate_spiral(batch_size=32, n_samples=100, t_max=10, noise_std=0.0, device="cpu"):
+    halb_batch = batch_size // 2
     #time
     t = torch.linspace(0, t_max, n_samples).to(device)
     
@@ -80,10 +57,37 @@ def generate_spiral(true_func, batch_size=32, n_samples=100, t_max=10, device="c
     
     #Solve ODE with true dynamics
     with torch.no_grad():
-        true_trajectories = odeint(true_func, y0, t, method='dopri5')
+        #Clockwise
+        true_func_cw = SpiralDynamics(direction=1.0, device=device)
+        y0_cw = y0[:halb_batch]
+        traj_cw = odeint(true_func_cw, y0_cw, t, method="dopri5")
         #Shape: [n_points, batch_size, 2]
-    
+
+        #Counter Clockwise
+        true_func_ccw = SpiralDynamics(direction=-1.0, device=device)
+        y0_ccw = y0[halb_batch:]
+        traj_ccw = odeint(true_func_ccw, y0_ccw, t, method="dopri5")
+
+        #Combine
+        true_trajectories = torch.cat([traj_cw, traj_ccw], dim=1)
+
+    #Add noise
+    if noise_std > 0:
+        true_trajectories += noise_std * torch.randn_like(true_trajectories)
+
     return t, y0, true_trajectories
+
+def generate_irregular(subsample_points, trajectories, n_samples, t, batch_size, device):
+    t = torch.zeros(subsample_points, dtype=torch.float32, device=device)
+    subsampled_traj = torch.zeros(subsample_points, batch_size, 2, dtype=torch.float32, device=device)
+    
+    for b in range(batch_size):
+        #random indicies, sort by time
+        idx = torch.randperm(n_samples)[:subsample_points].sort()[0]
+        subsampled_traj[:, b, :] = trajectories[idx, b, :]
+        t = t[idx]
+
+    return t, subsampled_traj 
 
 
 def plot_samples(t, y0, trajectories, title="True Sine Wave Dynamics", file_name="true_sine.png"):
@@ -197,6 +201,9 @@ if __name__ == '__main__':
     # t, y0, true_traj = generate_spiral(true_func, batch_size=8, n_samples=100)
     # plot_spiral(t, y0, true_traj, title="True Spiral Dynamics", file_name="true_spirals.png")
 
-    true_func = SineDynamics()
-    t, y0, true_traj = generate_sine(true_func, batch_size=16, n_samples=100)
-    plot_spiral(t, y0, true_traj, title="Sine Phase Space", file_name="true_sine_phase.png")
+    # true_func = SineDynamics()
+    # t, y0, true_traj = generate_sine(true_func, batch_size=16, n_samples=100)
+    # plot_spiral(t, y0, true_traj, title="Sine Phase Space", file_name="true_sine_phase.png")
+
+    t, y0, true_traj = generate_spiral(batch_size=4, n_samples=100, t_max=4*np.pi)
+    plot_spiral(t, y0, true_traj, title="Spiral Dynamics (CW + CCW)", file_name="true_spirals (cw + ccw).png")

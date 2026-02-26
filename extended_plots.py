@@ -7,6 +7,7 @@ import torch
 import matplotlib.pyplot as plt
 import os
 import argparse
+import numpy as np
 
 def parse_args():
     parser = argparse.ArgumentParser("Ode Model Plotting")
@@ -80,6 +81,44 @@ def generate_sines(ode_model, future_vals, t, single_true, device, true_func, ls
 
     return
 
+@torch.no_grad()
+def inspect_encoder_latents(model, observed_data, observed_times, 
+                           n_samples=8, return_df=False, device=None):
+    if device is None:
+        device = next(model.parameters()).device
+    
+    model.eval()
+    observed_data = observed_data.to(device)
+    observed_times = observed_times.to(device)
+    
+    if observed_data.dim() == 2:
+        observed_data = observed_data.unsqueeze(0)   # add batch dim if needed
+    
+    batch_size = observed_data.shape[0]
+    idx = np.random.choice(batch_size, size=min(n_samples, batch_size), replace=False)
+    
+    print(f"\nInspecting encoder outputs for {len(idx)} random trajectories:\n")
+    print("   idx   |  z₀ mean                  |  z₀ std                   | sample z₀")
+    print("-" * 85)
+    
+    rows = []
+    
+    for i, sample_idx in enumerate(idx):
+        x = observed_data[sample_idx:sample_idx+1]      # [1, T, obs_dim]
+        t = observed_times                               # [T] or [1,T]
+        
+        z0_mean, z0_logvar = model.encode(x, t)
+        z0_std = torch.exp(0.5 * z0_logvar)
+        
+        # one sample from posterior
+        z0_sample = model.reparametrize(z0_mean, z0_logvar)
+        
+        mean_str = " ".join(f"{v:.4f}" for v in z0_mean[0].cpu().numpy())
+        std_str  = " ".join(f"{v:.4f}" for v in z0_std[0].cpu().numpy())
+        samp_str = " ".join(f"{v:.4f}" for v in z0_sample[0].cpu().numpy())
+        
+        print(f"{sample_idx:6d}   | {mean_str} | {std_str} | {samp_str}")
+
 
 if __name__ == '__main__':
     args = parse_args()
@@ -110,7 +149,9 @@ if __name__ == '__main__':
     lstm.load_state_dict(lstm_weights)
 
     #Load Latent ODE
-    latent_ode = LatentODE(latent_dim=2, obs_dim=2, encoder_hidden=25, ode_hidden=20, decoder_hidden=20).to(device)
+    latent_ode = LatentODE(latent_dim=1, obs_dim=2, encoder_hidden=25, ode_hidden=64, decoder_hidden=25).to(device)
+    latent_ode_weights = torch.load(".\\Results\\latent_ode (kl_weight-0.05_latent-1).pth", weights_only=True)
+    latent_ode.load_state_dict(latent_ode_weights)
 
     if args.sine:
         #single values
@@ -168,8 +209,21 @@ if __name__ == '__main__':
             predicted_full=predicted_full[:, 0, :],  # Extract first batch
             true_func=true_func,
             t_max=6*torch.pi,
-            file_name="latent_ode_extrapolation.png",
+            file_name="latent_ode_extrapolation (kl_weight-0.05_latent-1).png",
             device=device)
+
+        latent_ode.eval()
+        with torch.no_grad():
+            traj_batch = true_traj.permute(1, 0, 2)
+            predicted, _, _ = latent_ode(traj_batch, t, t)
+            
+            # Check reconstruction error
+            recon_error = torch.mean((predicted - true_traj) ** 2)
+            print(f"Reconstruction error: {recon_error.item():.6f}")
+
+        traj_batch = true_traj.permute(1, 0, 2)
+
+        inspect_encoder_latents(latent_ode, traj_batch, t, n_samples=10)
 
        
 
