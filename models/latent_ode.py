@@ -366,8 +366,8 @@ if __name__ == "__main__":
     
     #Train
     print("\nTraining Latent ODE...")
-    losses = train_latent_ode(model, trajs, t, epochs=1000, kl_weight_start=0, kl_weight_end=0.01, device=device, file_name="latent_ode_spiral.pth")
-    plot_loss(losses, file_name="Latent ODE Losses (spiral-2).png")
+    losses = train_latent_ode(model, trajs, t, epochs=1000, kl_weight_start=0, kl_weight_end=1, device=device, file_name="latent_ode_spiral.pth")
+    plot_loss(losses, file_name="Latent ODE Losses (spiral-3).png")
 
 
 
