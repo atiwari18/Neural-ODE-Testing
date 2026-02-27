@@ -189,48 +189,6 @@ def plot_spiral(t, y0, trajectories, title="Spiral Trajectories", file_name="tra
     plt.savefig(full_path)
     print(f"Plot saved to: {full_path}")
 
-def generate_spiral2d(
-    nspiral=1000,
-    ntotal=500,
-    nsample=100,
-    noise_std=0.3,
-    a=0.0,
-    b=0.3,           # key: controls outward growth
-    start=0.0,
-    stop=6*np.pi,
-    device="cuda"
-):
-    orig_ts = torch.linspace(start, stop, ntotal, device=device)
-    samp_ts = orig_ts[:nsample]
-
-    # Clockwise spiral (shifted left)
-    theta_cw = stop + 1. - orig_ts
-    r_cw = a + b * 50. / theta_cw.clamp(min=1e-5)
-    xs_cw = r_cw * torch.cos(theta_cw) - 5.
-    ys_cw = r_cw * torch.sin(theta_cw)
-    traj_cw = torch.stack([xs_cw, ys_cw], dim=-1)
-
-    # Counter-clockwise (shifted right)
-    theta_cc = orig_ts
-    r_cc = a + b * theta_cc
-    xs_cc = r_cc * torch.cos(theta_cc) + 5.
-    ys_cc = r_cc * torch.sin(theta_cc)
-    traj_cc = torch.stack([xs_cc, ys_cc], dim=-1)
-
-    # Sample many spirals
-    trajs = []
-    for _ in range(nspiral):
-        cc = bool(torch.rand(()) > 0.5)
-        base = traj_cc if cc else traj_cw
-        # random start index (avoid edges)
-        t0_idx = torch.randint(nsample, ntotal-nsample, (1,)).item()
-        samp_traj = base[t0_idx:t0_idx+nsample].clone()
-        samp_traj += torch.randn_like(samp_traj) * noise_std
-        trajs.append(samp_traj)
-
-    trajs = torch.stack(trajs)          # [nspiral, nsample, 2]
-    return trajs, samp_ts
-
 
 # Testing generation
 if __name__ == '__main__':
@@ -241,9 +199,6 @@ if __name__ == '__main__':
     # t, y0, true_traj = generate_spiral(true_func, batch_size=8, n_samples=100)
     # plot_spiral(t, y0, true_traj, title="True Spiral Dynamics", file_name="true_spirals.png")
 
-    # true_func = SineDynamics()
-    # t, y0, true_traj = generate_sine(true_func, batch_size=16, n_samples=100)
-    # plot_spiral(t, y0, true_traj, title="Sine Phase Space", file_name="true_sine_phase.png")
-
-    t, y0, true_traj = generate_spiral(batch_size=4, n_samples=100, t_max=4*np.pi)
-    plot_spiral(t, y0, true_traj, title="Spiral Dynamics (CW + CCW)", file_name="true_spirals (cw + ccw).png")
+    true_func = SineDynamics()
+    t, y0, true_traj = generate_sine(true_func, batch_size=16, n_samples=100)
+    plot_spiral(t, y0, true_traj, title="Sine Phase Space", file_name="true_sine_phase.png")

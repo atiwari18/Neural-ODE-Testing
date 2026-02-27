@@ -131,7 +131,9 @@ def latent_ode_loss(predicted, target, z0_mean, z0_log_var, kl_weight=1.0):
     recon_loss = torch.mean((predicted-target) ** 2)
 
     #KL Divergence = -0.5 * Σ(1 + log(σ²) - μ² - σ²)
-    kl_loss = -0.5 * torch.sum(1 + z0_log_var - z0_mean.pow(2) - z0_log_var.exp())
+    kl_loss = -0.5 * torch.mean(
+        torch.sum(1 + z0_log_var - z0_mean.pow(2) - z0_log_var.exp(), dim=-1)
+    )
 
     #total loss 
     total_loss = recon_loss + kl_weight * kl_loss
@@ -149,12 +151,15 @@ def train_latent_ode(model, trajs, t, epochs=200, lr=0.001, kl_weight_start=0, k
     model.train()
     for epoch in range(epochs):
         #KL Annealing
-        kl_weight = kl_weight_start + (kl_weight_end - kl_weight_start) * min(epoch / (epochs * 0.5), 1.0)
+        kl_weight = kl_weight_start + (kl_weight_end - kl_weight_start) * min(epoch / (epochs * 0.3), 1.0)
 
         optimizer.zero_grad()
 
         #forward pas
         predicted, z0_mean, z0_logvar = model(traj_batch, t, t)
+
+        #Sanity check shapes match
+        assert predicted.shape == trajs.shape, f"Shape mismatch: {predicted.shape} vs {trajs.shape}"
 
         #compute loss
         total_loss, recon_loss, kl_loss = latent_ode_loss(predicted, trajs, z0_mean, z0_logvar, kl_weight)
@@ -361,8 +366,8 @@ if __name__ == "__main__":
     
     #Train
     print("\nTraining Latent ODE...")
-    losses = train_latent_ode(model, trajs, t, epochs=1000, kl_weight_start=0, kl_weight_end=0.001, device=device, file_name="latent_ode_spiral.pth")
-    plot_loss(losses, file_name="Latent ODE Losses (spiral).png")
+    losses = train_latent_ode(model, trajs, t, epochs=1000, kl_weight_start=0, kl_weight_end=0.01, device=device, file_name="latent_ode_spiral.pth")
+    plot_loss(losses, file_name="Latent ODE Losses (spiral-2).png")
 
 
 
