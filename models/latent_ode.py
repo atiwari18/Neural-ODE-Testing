@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 from torchdiffeq import odeint_adjoint as odeint
 import os
 from models.neural_ode import ODEFunc
-from dataset.data import SpiralDynamics, generate_spiral
+from dataset.data import SpiralDynamics, generate_spiral, generate_spiral2d
 
 #Encoder
 #This is a backwards RNN - it process the observations in reverse order to product an initial
@@ -126,7 +126,7 @@ class LatentODE(nn.Module):
 
         return predicted_obs, z0_mean, z0_var
     
-def latent_ode_loss(predicted, target, z0_mean, z0_log_var, kl_weight=1.0):
+def latent_ode_loss(predicted, target, z0_mean, z0_log_var, noise_std=0.01, kl_weight=1.0):
     #Reconstruction loss
     recon_loss = torch.mean((predicted-target) ** 2)
 
@@ -140,7 +140,7 @@ def latent_ode_loss(predicted, target, z0_mean, z0_log_var, kl_weight=1.0):
 
     return total_loss, recon_loss, kl_loss
 
-def train_latent_ode(model, trajs, t, epochs=200, lr=0.001, kl_weight_start=0, kl_weight_end=0.01, device="cuda", file_name="latent_ode.pth"):
+def train_latent_ode(model, trajs, t, epochs=200, lr=0.001, kl_weight_start=0, kl_weight_end=1.00, device="cuda", file_name="latent_ode.pth"):
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
 
     #rearrange trajectories to be [batch, n, obs_dim]
@@ -351,11 +351,28 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     #Generate data
-    true_func = SpiralDynamics(device=device).to(device)
-    t, y0, trajs = generate_spiral(batch_size=16, n_samples=100, t_max=4*torch.pi, device=device)
-    t = t.to(device)
-    y0 = y0.to(device)
-    trajs = trajs.to(device)
+    # true_func = SpiralDynamics(device=device).to(device)
+    # t, y0, trajs = generate_spiral(batch_size=16, n_samples=100, t_max=4*torch.pi, device=device)
+    # t = t.to(device)
+    # y0 = y0.to(device)
+    # trajs = trajs.to(device)
+
+    orig_trajs, samp_trajs, orig_ts, samp_ts = generate_spiral2d(
+        nspiral=1000,
+        ntotal=500,
+        nsample=100,
+        start=0.,
+        stop=6 * np.pi,
+        noise_std=0.3,
+        a=0.,
+        b=0.3,
+        savefig=True
+    )
+
+    #train_latent_ode expects trajs as [time, batch, dim]
+    #samp_trajs is [batch=1000, time=100, 2] -> transpose once
+    trajs = torch.from_numpy(samp_trajs).transpose(0, 1).float().to(device)  # [100, 1000, 2]
+    t = torch.from_numpy(samp_ts).float().to(device)
 
     #Create Model
     model = LatentODE(latent_dim=4,
@@ -366,8 +383,8 @@ if __name__ == "__main__":
     
     #Train
     print("\nTraining Latent ODE...")
-    losses = train_latent_ode(model, trajs, t, epochs=1000, kl_weight_start=0, kl_weight_end=1, device=device, file_name="latent_ode_spiral.pth")
-    plot_loss(losses, file_name="Latent ODE Losses (spiral-3).png")
+    losses = train_latent_ode(model, trajs, t, epochs=1000, lr=0.01 ,kl_weight_start=0, kl_weight_end=1, device=device, file_name="latent_ode_spiral-4-paper.pth")
+    plot_loss(losses, file_name="Latent ODE Losses (spiral-4-paper).png")
 
 
 

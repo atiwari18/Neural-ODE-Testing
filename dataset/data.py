@@ -189,6 +189,49 @@ def plot_spiral(t, y0, trajectories, title="Spiral Trajectories", file_name="tra
     plt.savefig(full_path)
     print(f"Plot saved to: {full_path}")
 
+def generate_spiral2d(nspiral=1000, ntotal=500, nsample=100,
+                      start=0., stop=6*np.pi, noise_std=0.3,
+                      a=0., b=0.3, savefig=True):
+    """Exact copy of the author's data generation (parametric spirals)."""
+    orig_ts = np.linspace(start, stop, num=ntotal)
+    samp_ts = orig_ts[:nsample]
+
+    # Clockwise
+    zs_cw = stop + 1. - orig_ts
+    rs_cw = a + b * 50. / zs_cw
+    xs, ys = rs_cw * np.cos(zs_cw) - 5., rs_cw * np.sin(zs_cw)
+    orig_traj_cw = np.stack((xs, ys), axis=1)
+
+    # Counter-clockwise
+    zs_cc = orig_ts
+    rw_cc = a + b * zs_cc
+    xs, ys = rw_cc * np.cos(zs_cc) + 5., rw_cc * np.sin(zs_cc)
+    orig_traj_cc = np.stack((xs, ys), axis=1)
+
+    if savefig:
+        plt.figure()
+        plt.plot(orig_traj_cw[:, 0], orig_traj_cw[:, 1], label='clock')
+        plt.plot(orig_traj_cc[:, 0], orig_traj_cc[:, 1], label='counter clock')
+        plt.legend()
+        plt.savefig('./ground_truth.png', dpi=500)
+        print('Saved ground truth spiral at ./ground_truth.png')
+
+    orig_trajs = []
+    samp_trajs = []
+    for _ in range(nspiral):
+        t0_idx = np.random.multinomial(1, [1. / (ntotal - 2. * nsample)] * (ntotal - int(2 * nsample)))
+        t0_idx = np.argmax(t0_idx) + nsample
+        cc = bool(np.random.rand() > .5)
+        orig_traj = orig_traj_cc if cc else orig_traj_cw
+        orig_trajs.append(orig_traj)
+        samp_traj = orig_traj[t0_idx:t0_idx + nsample, :].copy()
+        samp_traj += np.random.randn(*samp_traj.shape) * noise_std
+        samp_trajs.append(samp_traj)
+
+    orig_trajs = np.stack(orig_trajs, axis=0)
+    samp_trajs = np.stack(samp_trajs, axis=0)
+    return orig_trajs, samp_trajs, orig_ts, samp_ts
+
 
 # Testing generation
 if __name__ == '__main__':

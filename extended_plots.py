@@ -156,7 +156,7 @@ if __name__ == '__main__':
 
     #Load Latent ODE
     latent_ode = LatentODE(latent_dim=4, obs_dim=2, encoder_hidden=25, ode_hidden=64, decoder_hidden=25).to(device)
-    latent_ode_weights = torch.load(".\\Results\\latent_ode_spiral.pth", weights_only=True)
+    latent_ode_weights = torch.load(".\\Results\\latent_ode_spiral-3.pth", weights_only=True)
     latent_ode.load_state_dict(latent_ode_weights)
 
     if args.sine:
@@ -219,7 +219,7 @@ if __name__ == '__main__':
         #     device=device)
 
         plot_spiral_extrapolation(t_train=observed_times, state_train=single_traj[:seq_len], t_full=t_full, 
-                                  predicted_full=predicted_full[:, 0, :], true_traj=true_traj[:, 0, :])
+                                  predicted_full=predicted_full[:, 0, :], true_traj=true_traj[:, 0, :], file_name="latent_ode_spiral_extrapolation (spiral-3).png")
         
         latent_ode.eval()
         with torch.no_grad():
