@@ -126,18 +126,21 @@ class LatentODE(nn.Module):
 
         return predicted_obs, z0_mean, z0_var
     
-def latent_ode_loss(predicted, target, z0_mean, z0_log_var, noise_std=0.01, kl_weight=1.0):
-    #Reconstruction loss
-    recon_loss = torch.mean((predicted-target) ** 2)
+def latent_ode_loss(predicted, target, z0_mean, z0_log_var, noise_std=0.3, kl_weight=1.0):
+    """Exact paper loss: Gaussian NLL + KL (author's code)"""
+    # Reconstruction = negative log-likelihood of noisy observations
+    noise_logvar = 2. * torch.log(torch.tensor([noise_std], device=target.device))
+    logpx = -0.5 * ((target - predicted)**2 / torch.exp(noise_logvar) + 
+                    noise_logvar + np.log(2 * np.pi))
+    logpx = logpx.sum(-1).sum(-1)          # sum over time and dimensions
+    recon_loss = -torch.mean(logpx)        # negative ELBO term
 
-    #KL Divergence = -0.5 * Σ(1 + log(σ²) - μ² - σ²)
+    # KL (unchanged from yours)
     kl_loss = -0.5 * torch.mean(
         torch.sum(1 + z0_log_var - z0_mean.pow(2) - z0_log_var.exp(), dim=-1)
     )
 
-    #total loss 
     total_loss = recon_loss + kl_weight * kl_loss
-
     return total_loss, recon_loss, kl_loss
 
 def train_latent_ode(model, trajs, t, epochs=200, lr=0.001, kl_weight_start=0, kl_weight_end=1.00, device="cuda", file_name="latent_ode.pth"):
@@ -377,14 +380,14 @@ if __name__ == "__main__":
     #Create Model
     model = LatentODE(latent_dim=4,
                       obs_dim=2, 
-                      encoder_hidden=25, 
+                      encoder_hidden=25,                                                                                                                                                                                                                                                                                                                                                                                                                                       
                       ode_hidden=64,
                       decoder_hidden=25).to(device)
     
     #Train
     print("\nTraining Latent ODE...")
-    losses = train_latent_ode(model, trajs, t, epochs=1000, lr=0.01 ,kl_weight_start=0, kl_weight_end=1, device=device, file_name="latent_ode_spiral-4-paper.pth")
-    plot_loss(losses, file_name="Latent ODE Losses (spiral-4-paper).png")
+    losses = train_latent_ode(model, trajs, t, epochs=2000, lr=0.005 ,kl_weight_start=1, kl_weight_end=1, device=device, file_name="latent_ode_spiral-5-paper.pth")
+    plot_loss(losses, file_name="Latent ODE Losses (spiral-5-paper).png")
 
 
 
