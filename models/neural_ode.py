@@ -23,7 +23,8 @@ class AugmentedNODEFunc(nn.Module):
                 nn.Tanh(),
                 nn.Linear(hidden_dim, hidden_dim),
                 nn.Tanh(),
-                nn.Linear(hidden_dim, effective_dim)
+                nn.Linear(hidden_dim, effective_dim),
+                nn.Tanh()
             )
         else:
             self.net = nn.Sequential(
@@ -31,7 +32,8 @@ class AugmentedNODEFunc(nn.Module):
                 nn.Tanh(),
                 nn.Linear(hidden_dim, hidden_dim),
                 nn.Tanh(),
-                nn.Linear(hidden_dim, effective_dim + 1)
+                nn.Linear(hidden_dim, effective_dim + 1), 
+                nn.Tanh()
             )
 
         for m in self.net.modules():

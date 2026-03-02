@@ -120,6 +120,59 @@ def inspect_encoder_latents(model, observed_data, observed_times,
         
         print(f"{sample_idx:6d}   | {mean_str} | {std_str} | {samp_str}")
 
+def visualize_latent_ode(model, samp_trajs, samp_ts, orig_trajs, orig_ts, device, 
+                          file_name="latent_ode_vis.png"):
+    model.eval()
+    with torch.no_grad():
+        # Encode all sampled trajectories to get z0
+        traj_batch = samp_trajs.permute(1, 0, 2)  # [batch, time, dim] -> encode expects this
+        z0_mean, z0_logvar = model.encode(traj_batch, samp_ts)
+        
+        # Sample z0 using reparametrization
+        eps = torch.randn(z0_mean.size()).to(device)
+        z0 = eps * torch.exp(0.5 * z0_logvar) + z0_mean
+        
+        # Take first trajectory only
+        z0 = z0[0]  # [latent_dim]
+
+        # Positive and negative time directions (author's approach)
+        ts_pos = np.linspace(0., 2. * np.pi, num=2000)
+        ts_neg = np.linspace(-np.pi, 0., num=2000)[::-1].copy()
+        ts_pos = torch.from_numpy(ts_pos).float().to(device)
+        ts_neg = torch.from_numpy(ts_neg).float().to(device)
+
+        # Integrate ODE in both directions
+        zs_pos = odeint(model.ode_func, z0, ts_pos)
+        zs_neg = odeint(model.ode_func, z0, ts_neg)
+
+        # Decode
+        xs_pos = model.decoder(zs_pos)
+        xs_neg = torch.flip(model.decoder(zs_neg), dims=[0])
+
+    # Convert to numpy
+    xs_pos = xs_pos.cpu().numpy()
+    xs_neg = xs_neg.cpu().numpy()
+    orig_traj = orig_trajs[0].cpu().numpy()  # expects [batch, time, 2]
+    samp_traj = samp_trajs[0].cpu().numpy()  # expects [batch, time, 2]
+
+    plt.figure()
+    plt.plot(orig_traj[:, 0], orig_traj[:, 1], 'g', label='true trajectory')
+    plt.plot(xs_pos[:, 0], xs_pos[:, 1], 'r', label='learned trajectory (t>0)')
+    plt.plot(xs_neg[:, 0], xs_neg[:, 1], 'c', label='learned trajectory (t<0)')
+    plt.scatter(samp_traj[:, 0], samp_traj[:, 1], label='sampled data', s=3)
+    plt.legend()
+
+    script_path = os.path.abspath(__file__)
+    script_dir = os.path.dirname(script_path)
+    project_root = os.path.dirname(script_dir)
+    results_dir = os.path.join(project_root, 'Results')
+    os.makedirs(results_dir, exist_ok=True)
+
+    full_path = os.path.join(results_dir, file_name)
+    plt.savefig(full_path, dpi=500)
+    plt.close()
+    print(f"Saved visualization to {full_path}")
+
 
 if __name__ == '__main__':
     args = parse_args()
@@ -156,7 +209,7 @@ if __name__ == '__main__':
 
     #Load Latent ODE
     latent_ode = LatentODE(latent_dim=4, obs_dim=2, encoder_hidden=25, ode_hidden=64, decoder_hidden=25).to(device)
-    latent_ode_weights = torch.load(".\\Results\\latent_ode_spiral-4-paper.pth", weights_only=True)
+    latent_ode_weights = torch.load(".\\Results\\latent_ode_spiral-5-paper.pth", weights_only=True)
     latent_ode.load_state_dict(latent_ode_weights)
 
     if args.sine:
@@ -195,31 +248,35 @@ if __name__ == '__main__':
         )
 
     elif args.latent_ode:
-        #Use first 20 timesteps as seed
-        single_traj = true_traj[:, 0, :]  # [n_points, obs_dim]
-        seq_len = 20
-        observed_data = single_traj[:seq_len].unsqueeze(0)  # [1, seq_len, obs_dim]
-        observed_times = t[:seq_len]
-        
-        #Extrapolate to 6π
-        t_full, predicted_full, z_traj = extrapolate_latent_ode(
-            latent_ode, observed_data, observed_times,
-            t_max=6*torch.pi, device=device
-        )
-        
-        #Plot extrapolation
-        # plot_latent_ode_extrapolation(
-        #     t_train=observed_times,
-        #     state_train=single_traj[:seq_len],
-        #     t_full=t_full,
-        #     predicted_full=predicted_full[:, 0, :],  # Extract first batch
-        #     true_func=true_func,
-        #     t_max=6*torch.pi,
-        #     file_name="latent_ode_extrapolation (spiral-1).png",
-        #     device=device)
+        from dataset.data import generate_spiral2d
 
-        plot_spiral_extrapolation(t_train=observed_times, state_train=single_traj[:seq_len], t_full=t_full, 
-                                  predicted_full=predicted_full[:, 0, :], true_traj=true_traj[:, 0, :], file_name="latent_ode_spiral_extrapolation (spiral-4-paper).png")
+        # Load the same data used during training
+        orig_trajs, samp_trajs, orig_ts, samp_ts = generate_spiral2d(
+            nspiral=1000,
+            ntotal=500,
+            nsample=100,
+            start=0.,
+            stop=6 * np.pi,
+            noise_std=0.3,
+            a=0.,
+            b=0.3,
+            savefig=False
+        )
+
+        orig_trajs_tensor = torch.from_numpy(orig_trajs).float().to(device)  # [1000, 500, 2]
+        samp_trajs_tensor = torch.from_numpy(samp_trajs).float().to(device)  # [1000, 100, 2]
+        samp_ts_tensor = torch.from_numpy(samp_ts).float().to(device)
+        orig_ts_tensor = torch.from_numpy(orig_ts).float().to(device)
+
+        visualize_latent_ode(
+            model=latent_ode,
+            samp_trajs=samp_trajs_tensor,
+            samp_ts=samp_ts_tensor,
+            orig_trajs=orig_trajs_tensor,
+            orig_ts=orig_ts_tensor,
+            device=device,
+            file_name="latent_ode_vis (spiral-5-paper).png"
+        )
         
         latent_ode.eval()
         with torch.no_grad():

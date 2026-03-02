@@ -127,15 +127,15 @@ class LatentODE(nn.Module):
         return predicted_obs, z0_mean, z0_var
     
 def latent_ode_loss(predicted, target, z0_mean, z0_log_var, noise_std=0.3, kl_weight=1.0):
-    """Exact paper loss: Gaussian NLL + KL (author's code)"""
-    # Reconstruction = negative log-likelihood of noisy observations
-    noise_logvar = 2. * torch.log(torch.tensor([noise_std], device=target.device))
-    logpx = -0.5 * ((target - predicted)**2 / torch.exp(noise_logvar) + 
-                    noise_logvar + np.log(2 * np.pi))
-    logpx = logpx.sum(-1).sum(-1)          # sum over time and dimensions
-    recon_loss = -torch.mean(logpx)        # negative ELBO term
+    z0_log_var = torch.clamp(z0_log_var, min=-10, max=2)
 
-    # KL (unchanged from yours)
+    # Fix: compute directly in log space without tensor conversion
+    noise_logvar = 2. * np.log(noise_std)  
+
+    recon_loss = 0.5 * ((target - predicted) ** 2 / np.exp(noise_logvar) + 
+                         noise_logvar + np.log(2 * np.pi))
+    recon_loss = recon_loss.sum(-1).mean()
+
     kl_loss = -0.5 * torch.mean(
         torch.sum(1 + z0_log_var - z0_mean.pow(2) - z0_log_var.exp(), dim=-1)
     )
