@@ -102,6 +102,8 @@ class LatentODE(nn.Module):
         return z0_mean, z0_logvar
     
     def reparametrize(self, mean, logvar):
+        #logvar = torch.clamp(logvar, min=-10, max=2)
+
         #compute the standard deviation from logvar
         std = torch.exp(0.5 * logvar)
 
@@ -154,7 +156,7 @@ def train_latent_ode(model, trajs, t, epochs=200, lr=0.001, kl_weight_start=0, k
     model.train()
     for epoch in range(epochs):
         #KL Annealing
-        kl_weight = kl_weight_start + (kl_weight_end - kl_weight_start) * min(epoch / (epochs * 0.3), 1.0)
+        kl_weight = kl_weight_start + (kl_weight_end - kl_weight_start) * min(epoch / (epochs * 0.5), 1.0)
 
         optimizer.zero_grad()
 
@@ -165,7 +167,7 @@ def train_latent_ode(model, trajs, t, epochs=200, lr=0.001, kl_weight_start=0, k
         assert predicted.shape == trajs.shape, f"Shape mismatch: {predicted.shape} vs {trajs.shape}"
 
         #compute loss
-        total_loss, recon_loss, kl_loss = latent_ode_loss(predicted, trajs, z0_mean, z0_logvar, kl_weight)
+        total_loss, recon_loss, kl_loss = latent_ode_loss(predicted, trajs, z0_mean, z0_logvar, noise_std=0.3, kl_weight=kl_weight)
 
         #backward pass
         total_loss.backward()
@@ -366,7 +368,7 @@ if __name__ == "__main__":
         nsample=100,
         start=0.,
         stop=6 * np.pi,
-        noise_std=0.3,
+        noise_std=0.1,
         a=0.,
         b=0.3,
         savefig=True
@@ -386,7 +388,7 @@ if __name__ == "__main__":
     
     #Train
     print("\nTraining Latent ODE...")
-    losses = train_latent_ode(model, trajs, t, epochs=2000, lr=0.005 ,kl_weight_start=1, kl_weight_end=1, device=device, file_name="latent_ode_spiral-5-paper.pth")
+    losses = train_latent_ode(model, trajs, t, epochs=2000, lr=0.001 ,kl_weight_start=0, kl_weight_end=0.1, device=device, file_name="latent_ode_spiral-5-paper.pth")
     plot_loss(losses, file_name="Latent ODE Losses (spiral-5-paper).png")
 
 

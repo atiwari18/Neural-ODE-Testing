@@ -136,7 +136,7 @@ def visualize_latent_ode(model, samp_trajs, samp_ts, orig_trajs, orig_ts, device
         z0 = z0[0]  # [latent_dim]
 
         # Positive and negative time directions (author's approach)
-        ts_pos = np.linspace(0., 2. * np.pi, num=2000)
+        ts_pos = np.linspace(0., 6. * np.pi, num=2000)
         ts_neg = np.linspace(-np.pi, 0., num=2000)[::-1].copy()
         ts_pos = torch.from_numpy(ts_pos).float().to(device)
         ts_neg = torch.from_numpy(ts_neg).float().to(device)
