@@ -20,6 +20,7 @@ parser.add_argument('--niters', type=int, default=2000)
 parser.add_argument('--lr', type=float, default=0.01)
 parser.add_argument('--gpu', type=int, default=0)
 parser.add_argument('--train_dir', type=str, default=None)
+parser.add_argument("--data", type=eval, default=False)
 args = parser.parse_args()
 
 if args.adjoint:
@@ -202,7 +203,7 @@ if __name__ == '__main__':
     nspiral = 1000
     start = 0.
     stop = 6 * np.pi
-    noise_std = .3
+    noise_std = 0.1
     a = 0.
     b = .3
     ntotal = 1000
@@ -269,12 +270,16 @@ if __name__ == '__main__':
             pz0_mean = pz0_logvar = torch.zeros(z0.size()).to(device)
             analytic_kl = normal_kl(qz0_mean, qz0_logvar,
                                     pz0_mean, pz0_logvar).sum(-1)
+
+            kl_weight = 0 + (0 - 1) * min(itr / (5001 * 0.3), 1.0)
+
+
             loss = torch.mean(-logpx + analytic_kl, dim=0)
             loss.backward()
             optimizer.step()
             loss_meter.update(loss.item())
 
-            print('Iter: {}, running avg elbo: {:.4f}, running kl: {:.4f}'.format(itr, -loss_meter.avg, analytic_kl.mean()))
+            print('Iter: {}, running avg elbo: {:.4f}, running kl: {:.4f}, kl_weight: {:.4f}'.format(itr, -loss_meter.avg, analytic_kl.mean(), kl_weight))
 
     except KeyboardInterrupt:
         if args.train_dir is not None:
@@ -333,6 +338,6 @@ if __name__ == '__main__':
         plt.scatter(samp_traj[:, 0], samp_traj[
                     :, 1], label='sampled data', s=3)
         plt.legend()
-        fig_name = f'./vis-{args.niters}-{args.lr}.png'
+        fig_name = f'./vis-{args.niters}-{args.lr}-kl_anneal-1.png'
         plt.savefig(fig_name, dpi=500)
-        print('Saved visualization figure at {}'.format('./vis-3000-001.png'))
+        print('Saved visualization figure at {}'.format(fig_name))
