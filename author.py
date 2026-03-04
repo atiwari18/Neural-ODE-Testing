@@ -333,5 +333,6 @@ if __name__ == '__main__':
         plt.scatter(samp_traj[:, 0], samp_traj[
                     :, 1], label='sampled data', s=3)
         plt.legend()
-        plt.savefig('./vis.png', dpi=500)
-        print('Saved visualization figure at {}'.format('./vis.png'))
+        fig_name = f'./vis-{args.niters}-{args.lr}.png'
+        plt.savefig(fig_name, dpi=500)
+        print('Saved visualization figure at {}'.format('./vis-3000-001.png'))
