@@ -86,6 +86,9 @@ def generate_spiral2d(nspiral=1000,
     samp_trajs = []
     for _ in range(nspiral):
         # don't sample t0 very near the start or the end
+        #independently draws a new random t0 for each of the 1000 spirals. 
+        #So each trajectory gets its own random starting point, and the 100-point window 
+        #[t0_idx : t0_idx + nsample] is cut from that unique position.
         t0_idx = npr.multinomial(
             1, [1. / (ntotal - 2. * nsample)] * (ntotal - int(2 * nsample)))
         t0_idx = np.argmax(t0_idx) + nsample
@@ -265,16 +268,17 @@ if __name__ == '__main__':
             # compute loss
             noise_std_ = torch.zeros(pred_x.size()).to(device) + noise_std
             noise_logvar = 2. * torch.log(noise_std_).to(device)
+            
             logpx = log_normal_pdf(
                 samp_trajs, pred_x, noise_logvar).sum(-1).sum(-1)
             pz0_mean = pz0_logvar = torch.zeros(z0.size()).to(device)
             analytic_kl = normal_kl(qz0_mean, qz0_logvar,
                                     pz0_mean, pz0_logvar).sum(-1)
 
-            kl_weight = 0 + (0 - 1) * min(itr / (5001 * 0.3), 1.0)
+            kl_weight = min(itr / (args.niters * 0.5), 1.0)
 
 
-            loss = torch.mean(-logpx + analytic_kl, dim=0)
+            loss = torch.mean(-logpx + kl_weight*analytic_kl, dim=0)
             loss.backward()
             optimizer.step()
             loss_meter.update(loss.item())
