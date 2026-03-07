@@ -38,7 +38,8 @@ def generate_spiral2d(nspiral=1000,
                       noise_std=.1,
                       a=0.,
                       b=1.,
-                      savefig=True):
+                      savefig=True, 
+                      rng=None):
     """Parametric formula for 2d spiral is `r = a + b * theta`.
 
     Args:
@@ -57,6 +58,9 @@ def generate_spiral2d(nspiral=1000,
       third element is timestamps of size (ntotal,),
       and fourth element is timestamps of size (nsample,)
     """
+    #If no rng is applied then fall back to the global state
+    if rng is None:
+        rng = np.random.mtrand._rand
 
     # add 1 all timestamps to avoid division by 0
     orig_ts = np.linspace(start, stop, num=ntotal)
