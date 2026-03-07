@@ -206,7 +206,14 @@ if __name__ == '__main__':
                 'samp_ts': samp_ts,
             }, ckpt_path)
             print('Stored ckpt at {}'.format(ckpt_path))
-    print('Training complete after {} iters.'.format(itr))
+
+    log_file.close()
+    print(f"Saved training log to {log_path}")
+    print(f'Training complete after {itr} iters.')
+
+    #ensures memory is returned to the driver cleanly.
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
 
     if args.visualize:
         fig_name = f'./vis-{args.niters}-{args.lr}-{anneal_label}.png'
