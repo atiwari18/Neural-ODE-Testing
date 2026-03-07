@@ -1,15 +1,4 @@
 """
-run_experiments.py
-Runs all 18 combinations of niters x kl_anneal x lr.
-
-Expected layout:
-    Neural-ODE-Testing/
-        run_experiments.py        <-- this file
-        Experiments/
-            anneal_experiment.py
-            models/
-                latent_ode.py
-
 Usage (from Neural-ODE-Testing/):
     python run_experiments.py
     python run_experiments.py --visualize True

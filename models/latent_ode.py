@@ -14,21 +14,18 @@ import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
 
-parser = argparse.ArgumentParser()
-parser.add_argument('--adjoint', type=eval, default=False)
-parser.add_argument('--visualize', type=eval, default=False)
-parser.add_argument('--niters', type=int, default=2000)
-parser.add_argument('--lr', type=float, default=0.01)
-parser.add_argument('--gpu', type=int, default=0)
-parser.add_argument('--train_dir', type=str, default=None)
-parser.add_argument("--data", type=eval, default=False)
-args = parser.parse_args()
+def parse_args():
 
-if args.adjoint:
-    from torchdiffeq import odeint_adjoint as odeint
-else:
-    from torchdiffeq import odeint
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--adjoint', type=eval, default=False)
+    parser.add_argument('--visualize', type=eval, default=False)
+    parser.add_argument('--niters', type=int, default=2000)
+    parser.add_argument('--lr', type=float, default=0.01)
+    parser.add_argument('--gpu', type=int, default=0)
+    parser.add_argument('--train_dir', type=str, default=None)
+    parser.add_argument("--data", type=eval, default=False)
 
+    return parser.parse_args()
 
 def generate_spiral2d(nspiral=1000,
                       ntotal=500,
@@ -94,16 +91,16 @@ def generate_spiral2d(nspiral=1000,
         #independently draws a new random t0 for each of the 1000 spirals. 
         #So each trajectory gets its own random starting point, and the 100-point window 
         #[t0_idx : t0_idx + nsample] is cut from that unique position.
-        t0_idx = npr.multinomial(
+        t0_idx = rng.multinomial(
             1, [1. / (ntotal - 2. * nsample)] * (ntotal - int(2 * nsample)))
         t0_idx = np.argmax(t0_idx) + nsample
 
-        cc = bool(npr.rand() > .5)  # uniformly select rotation
+        cc = bool(rng.rand() > .5)  # uniformly select rotation
         orig_traj = orig_traj_cc if cc else orig_traj_cw
         orig_trajs.append(orig_traj)
 
         samp_traj = orig_traj[t0_idx:t0_idx + nsample, :].copy()
-        samp_traj += npr.randn(*samp_traj.shape) * noise_std
+        samp_traj += rng.randn(*samp_traj.shape) * noise_std
         samp_trajs.append(samp_traj)
 
     # batching for sample trajectories is good for RNN; batching for original
@@ -204,6 +201,13 @@ def normal_kl(mu1, lv1, mu2, lv2):
 
 
 if __name__ == '__main__':
+    args = parse_args()
+
+    if args.adjoint:
+        from torchdiffeq import odeint_adjoint as odeint
+    else:
+        from torchdiffeq import odeint
+
     latent_dim = 4
     nhidden = 20
     rnn_nhidden = 25

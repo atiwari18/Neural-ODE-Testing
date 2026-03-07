@@ -86,7 +86,6 @@ if __name__ == '__main__':
     data_rng = npr.RandomState(args.seed)
     torch.manual_seed(args.seed)
 
-
     latent_dim = 4
     nhidden = 20
     rnn_nhidden = 25
@@ -121,25 +120,8 @@ if __name__ == '__main__':
     optimizer = optim.Adam(params, lr=args.lr)
     loss_meter = RunningAverageMeter()
 
-    if args.train_dir is not None:
-        if not os.path.exists(args.train_dir):
-            os.makedirs(args.train_dir)
-        ckpt_path = os.path.join(args.train_dir, 'ckpt.pth')
-        if os.path.exists(ckpt_path):
-            checkpoint = torch.load(ckpt_path)
-            func.load_state_dict(checkpoint['func_state_dict'])
-            rec.load_state_dict(checkpoint['rec_state_dict'])
-            dec.load_state_dict(checkpoint['dec_state_dict'])
-            optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-            orig_trajs = checkpoint['orig_trajs']
-            samp_trajs = checkpoint['samp_trajs']
-            orig_ts = checkpoint['orig_ts']
-            samp_ts = checkpoint['samp_ts']
-            print('Loaded ckpt from {}'.format(ckpt_path))
-
     anneal_label = "kl_anneal" if args.kl_anneal else "no_kl_anneal"
-    print(f'Starting training: niters={args.niters}, lr={args.lr}, '
-          f'kl_anneal={args.kl_anneal}, seed={args.seed}')
+    print(f'Starting training: niters={args.niters}, lr={args.lr}, 'f'kl_anneal={args.kl_anneal}, seed={args.seed}')
     
     log_path = f'./log-{args.niters}-{args.lr}-{anneal_label}.csv'
     log_file = open(log_path, 'w', newline='')
