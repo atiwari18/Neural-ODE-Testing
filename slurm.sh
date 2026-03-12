@@ -6,6 +6,15 @@
 #SBATCH --partition=short
 #SBATCH --time=0-12:00:00
 #SBATCH --gres=gpu:1
-#SBATCH --constraint="A100|V100"
-#SBATCH --output=logs/slurm_%j.out
-#SBATCH --error=logs/slurm_%j.err
+#SBATCH --output=Experiments/logs/slurm_%j.out
+#SBATCH --error=Experiments/logs/slurm_%j.err
+
+module load python
+module load cuda
+
+cd "$SLURM_SUBMIT_DIR/Experiments" || exit 1
+
+source .venv/bin/activate
+mkdir -p logs
+
+python3 run_experiments.py
