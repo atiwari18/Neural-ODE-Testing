@@ -9,12 +9,15 @@
 #SBATCH --output=Experiments/logs/slurm_%j.out
 #SBATCH --error=Experiments/logs/slurm_%j.err
 
+mkdir -p Experiments/logs
+
 module load python
 module load cuda
 
-cd "$SLURM_SUBMIT_DIR/Experiments" || exit 1
+# Stay in the project root (SLURM_SUBMIT_DIR) — run_experiments.py lives here
+cd "$SLURM_SUBMIT_DIR" || exit 1
 
+# Activate venv from the project root
 source .venv/bin/activate
-mkdir -p logs
 
 python3 run_experiments.py

@@ -154,11 +154,15 @@ if __name__ == '__main__':
             analytic_kl = normal_kl(qz0_mean, qz0_logvar,
                                     pz0_mean, pz0_logvar).sum(-1)
 
+            #Annealing strategy from: https://github.com/YuliaRubanova/latent_ode/blob/master/run_models.py#L259
+            wait_until_kl_inc = args.niters // 10
             if args.kl_anneal:
-                kl_weight = min(itr / (args.niters * 0.5), 1.0)
+                if itr < wait_until_kl_inc:
+                    kl_weight = 0
+                else:
+                    kl_weight = (1 - 0.99 ** (itr - wait_until_kl_inc))
             else:
                 kl_weight = 1.0
-
 
             loss = torch.mean(-logpx + kl_weight*analytic_kl, dim=0)
             loss.backward()
