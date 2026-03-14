@@ -17,10 +17,10 @@ ROOT_DIR = Path(__file__).resolve().parent
 EXPERIMENTS_DIR = ROOT_DIR / "Experiments"
 
 # Sanity check: fail fast with a clear message if the layout looks wrong
-if not (EXPERIMENTS_DIR / "anneal_experiment.py").exists():
-    print(f"ERROR: Could not find anneal_experiment.py at {EXPERIMENTS_DIR}")
+if not (EXPERIMENTS_DIR / "extrapolation_experiment.py").exists():
+    print(f"ERROR: Could not find extrapolation_experiment.py at {EXPERIMENTS_DIR}")
     print( "       Make sure run_experiments.py is in the project root and")
-    print( "       Experiments/anneal_experiment.py exists.")
+    print( "       Experiments/extrapolation_experiment.py exists.")
     sys.exit(1)
 
 if not (ROOT_DIR / "models").exists():
@@ -39,9 +39,9 @@ def parse_args():
 if __name__ == '__main__':
     args = parse_args()
 
-    NITERS_LIST    = [1000, 3000, 5000, 7500, 10000]
-    KL_ANNEAL_LIST = [True, False]
-    LR_LIST        = [0.005, 0.001, 0.0005]
+    NITERS_LIST    = [1000]
+    KL_ANNEAL_LIST = [True]
+    LR_LIST        = [0.005]
 
     total = len(NITERS_LIST) * len(KL_ANNEAL_LIST) * len(LR_LIST)
     count = 0
