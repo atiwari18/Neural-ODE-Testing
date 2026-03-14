@@ -41,7 +41,7 @@ if __name__ == '__main__':
 
     NITERS_LIST    = [1000, 3000, 5000, 7500, 10000]
     KL_ANNEAL_LIST = [True, False]
-    LR_LIST        = [0.01, 0.005, 0.001, 0.0005]
+    LR_LIST        = [0.005, 0.001, 0.0005]
 
     total = len(NITERS_LIST) * len(KL_ANNEAL_LIST) * len(LR_LIST)
     count = 0
