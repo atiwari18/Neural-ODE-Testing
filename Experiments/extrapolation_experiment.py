@@ -25,10 +25,80 @@ def parse_args():
 
     return parser.parse_args()
 
+def generate_spiral2d(nspiral=1000,
+                      ntotal=500,
+                      nsample=100,
+                      start=0.,
+                      stop=1,  # approximately equal to 6pi
+                      noise_std=.1,
+                      a=0.,
+                      b=1.,
+                      savefig=True, 
+                      rng=None):
+    #If no rng is applied then fall back to the global state
+    if rng is None:
+        rng = np.random.mtrand._rand
+
+    # add 1 all timestamps to avoid division by 0
+    orig_ts = np.linspace(start, stop, num=ntotal)
+    samp_ts = orig_ts[:nsample]
+
+    # generate clock-wise and counter clock-wise spirals in observation space
+    # with two sets of time-invariant latent dynamics
+    zs_cw = stop + 1. - orig_ts
+    rs_cw = a + b * 50. / zs_cw
+    xs, ys = rs_cw * np.cos(zs_cw) - 5., rs_cw * np.sin(zs_cw)
+    orig_traj_cw = np.stack((xs, ys), axis=1)
+
+    zs_cc = orig_ts
+    rw_cc = a + b * zs_cc
+    xs, ys = rw_cc * np.cos(zs_cc) + 5., rw_cc * np.sin(zs_cc)
+    orig_traj_cc = np.stack((xs, ys), axis=1)
+
+    if savefig:
+        plt.figure()
+        plt.plot(orig_traj_cw[:, 0], orig_traj_cw[:, 1], label='clock')
+        plt.plot(orig_traj_cc[:, 0], orig_traj_cc[:, 1], label='counter clock')
+        plt.legend()
+        plt.savefig('./ground_truth.png', dpi=500)
+        print('Saved ground truth spiral at {}'.format('./ground_truth.png'))
+
+    # sample starting timestamps
+    orig_trajs = []
+    samp_trajs = []
+    start_idxs = []
+
+    for _ in range(nspiral):
+        # don't sample t0 very near the start or the end
+        #independently draws a new random t0 for each of the 1000 spirals. 
+        #So each trajectory gets its own random starting point, and the 100-point window 
+        #[t0_idx : t0_idx + nsample] is cut from that unique position.
+        t0_idx = rng.multinomial(
+            1, [1. / (ntotal - 2. * nsample)] * (ntotal - int(2 * nsample)))
+        t0_idx = np.argmax(t0_idx) + nsample
+        start_idxs.append(t0_idx)
+
+        cc = bool(rng.rand() > .5)  # uniformly select rotation
+        orig_traj = orig_traj_cc if cc else orig_traj_cw
+        orig_trajs.append(orig_traj)
+
+        samp_traj = orig_traj[t0_idx:t0_idx + nsample, :].copy()
+        samp_traj += rng.randn(*samp_traj.shape) * noise_std
+        samp_trajs.append(samp_traj)
+
+    # batching for sample trajectories is good for RNN; batching for original
+    # trajectories only for ease of indexing
+    orig_trajs = np.stack(orig_trajs, axis=0)
+    samp_trajs = np.stack(samp_trajs, axis=0)
+    start_idxs = np.array(start_idxs)
+
+    return orig_trajs, samp_trajs, orig_ts, samp_ts, start_idxs
+
 #Indicies of the 4 spirals
 VIZ_SPIRAL_IDX = [0, 1, 2, 3]
 
-def visualize(func, rec, dec, orig_trajs, samp_trajs, samp_ts, orig_ts_np, latent_dim, device, save_path):
+def visualize(func, rec, dec, orig_trajs, samp_trajs, samp_ts, orig_ts_np,
+              start_idxs, latent_dim, device, save_path):
     with torch.no_grad():
         fig, axes = plt.subplots(2, 2, figsize=(12, 10))
         axes = axes.flatten()
@@ -36,7 +106,7 @@ def visualize(func, rec, dec, orig_trajs, samp_trajs, samp_ts, orig_ts_np, laten
         for plot_i, spiral_idx in enumerate(VIZ_SPIRAL_IDX):
             ax = axes[plot_i]
 
-            # --- encode exactly as in training (z0 at start of this spiral's random window) ---
+            # encode exactly as training
             h = rec.initHidden().to(device)
             for t in reversed(range(samp_trajs.size(1))):
                 obs = samp_trajs[:, t, :]
@@ -44,33 +114,39 @@ def visualize(func, rec, dec, orig_trajs, samp_trajs, samp_ts, orig_ts_np, laten
             qz0_mean, qz0_logvar = out[:, :latent_dim], out[:, latent_dim:]
             epsilon = torch.randn(qz0_mean.size()).to(device)
             z0_all = epsilon * torch.exp(0.5 * qz0_logvar) + qz0_mean
-            z0 = z0_all[spiral_idx]   # z0 at the start of this spiral's observations
-
-            # === ONLY FORWARD, from the actual observation start time to full spiral end ===
-            # samp_ts[0] is the earliest time in the window (random for each spiral)
-            t_start = samp_ts[0].item() if torch.is_tensor(samp_ts) else samp_ts[0]
-            full_stop = orig_ts_np[-1]                    # 6π
-            ts_forward = torch.linspace(t_start, full_stop, 2000).float().to(device)
-
-            xs_forward = dec(odeint(func, z0, ts_forward)).cpu().numpy()
+            z0 = z0_all[spiral_idx]
 
             orig_traj = orig_trajs[spiral_idx].cpu().numpy()
             samp_traj = samp_trajs[spiral_idx].cpu().numpy()
+            t0_idx = start_idxs[spiral_idx]
+            abs_start_t = orig_ts_np[t0_idx]          # real start time for THIS spiral
+
+            # Forward extrapolation
+            ts_fwd = torch.linspace(abs_start_t, orig_ts_np[-1], 2000).float().to(device)
+            xs_fwd = dec(odeint(func, z0, ts_fwd)).cpu().numpy()
+
+            # Backward extrapolation (now trained!)
+            back_span = abs_start_t - orig_ts_np[0]   # how far back we can go
+            ts_back = torch.linspace(abs_start_t, abs_start_t - back_span, 1000).float().to(device)
+            xs_back = dec(odeint(func, z0, ts_back)).cpu().numpy()
 
             ax.plot(orig_traj[:, 0], orig_traj[:, 1],
                     'g', label='true trajectory (full)', linewidth=1.5)
-            ax.plot(xs_forward[:, 0], xs_forward[:, 1],
-                    'r', label='learned forward from obs start', linewidth=1.2)
+            ax.plot(xs_fwd[:, 0], xs_fwd[:, 1],
+                    'r', label='learned forward', linewidth=1.2)
+            ax.plot(xs_back[:, 0], xs_back[:, 1],
+                    'c', label='learned backward', linewidth=1.2)
             ax.scatter(samp_traj[:, 0], samp_traj[:, 1],
                        label='observed data', s=4, alpha=0.7, color='blue')
 
-            ax.set_title(f'Spiral {spiral_idx} (obs start at t≈{t_start:.2f})')
+            ax.set_title(f'Spiral {spiral_idx} (obs start at t≈{abs_start_t:.2f})')
             ax.legend(fontsize=8)
 
         plt.tight_layout()
         plt.savefig(save_path, dpi=300)
         plt.close()
-        print(f'Saved visualization (forward-only) at {save_path}')      
+        print(f'Saved bidirectional visualization at {save_path}')    
+     
 
 if __name__ == '__main__':
     args = parse_args()
@@ -84,17 +160,17 @@ if __name__ == '__main__':
     rnn_nhidden = 25
     obs_dim = 2
     nspiral = 1000
-    start = 0.
+    start = -3 * np.pi
     stop = 6 * np.pi
     noise_std = 0.2
     a = 0.
     b = .3
-    ntotal = 1000
+    ntotal = 1500
     nsample = 100
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # generate toy spiral data
-    orig_trajs, samp_trajs, orig_ts, samp_ts = generate_spiral2d(
+    orig_trajs, samp_trajs, orig_ts, samp_ts, start_idxs = generate_spiral2d(
         nspiral=nspiral,
         start=start,
         stop=stop,
@@ -203,6 +279,6 @@ if __name__ == '__main__':
         visualize(
             func, rec, dec,
             orig_trajs, samp_trajs, samp_ts,
-            orig_ts, latent_dim, device,
+            orig_ts, start_idxs, latent_dim, device,
             save_path=fig_name
         )
