@@ -133,9 +133,11 @@ if __name__ == '__main__':
             optimizer.zero_grad()
             # backward in time to infer q(z_0)
             h = rec.initHidden().to(device)
+
             for t in reversed(range(samp_trajs.size(1))):
                 obs = samp_trajs[:, t, :]
                 out, h = rec.forward(obs, h)
+                
             qz0_mean, qz0_logvar = out[:, :latent_dim], out[:, latent_dim:]
             epsilon = torch.randn(qz0_mean.size()).to(device)
             z0 = epsilon * torch.exp(.5 * qz0_logvar) + qz0_mean

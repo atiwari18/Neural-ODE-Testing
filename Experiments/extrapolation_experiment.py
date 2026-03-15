@@ -36,48 +36,41 @@ def visualize(func, rec, dec, orig_trajs, samp_trajs, samp_ts, orig_ts_np, laten
         for plot_i, spiral_idx in enumerate(VIZ_SPIRAL_IDX):
             ax = axes[plot_i]
 
-            # --- encode the full batch, then pick the desired spiral ---
+            # --- encode exactly as in training (z0 at start of this spiral's random window) ---
             h = rec.initHidden().to(device)
             for t in reversed(range(samp_trajs.size(1))):
                 obs = samp_trajs[:, t, :]
                 out, h = rec.forward(obs, h)
             qz0_mean, qz0_logvar = out[:, :latent_dim], out[:, latent_dim:]
             epsilon = torch.randn(qz0_mean.size()).to(device)
-            z0_all = epsilon * torch.exp(.5 * qz0_logvar) + qz0_mean
+            z0_all = epsilon * torch.exp(0.5 * qz0_logvar) + qz0_mean
+            z0 = z0_all[spiral_idx]   # z0 at the start of this spiral's observations
 
-            z0 = z0_all[spiral_idx]  # shape: (latent_dim,)
+            # === ONLY FORWARD, from the actual observation start time to full spiral end ===
+            # samp_ts[0] is the earliest time in the window (random for each spiral)
+            t_start = samp_ts[0].item() if torch.is_tensor(samp_ts) else samp_ts[0]
+            full_stop = orig_ts_np[-1]                    # 6π
+            ts_forward = torch.linspace(t_start, full_stop, 2000).float().to(device)
 
-            ts_pos = torch.from_numpy(
-                np.linspace(0., 2. * np.pi, num=2000)
-            ).float().to(device)
-            ts_neg = torch.from_numpy(
-                np.linspace(-np.pi, 0., num=2000)[::-1].copy()
-            ).float().to(device)
-
-            xs_pos = dec(odeint(func, z0, ts_pos)).cpu().numpy()
-            xs_neg = torch.flip(
-                dec(odeint(func, z0, ts_neg)), dims=[0]
-            ).cpu().numpy()
+            xs_forward = dec(odeint(func, z0, ts_forward)).cpu().numpy()
 
             orig_traj = orig_trajs[spiral_idx].cpu().numpy()
             samp_traj = samp_trajs[spiral_idx].cpu().numpy()
 
             ax.plot(orig_traj[:, 0], orig_traj[:, 1],
-                    'g', label='true trajectory', linewidth=1.5)
-            ax.plot(xs_pos[:, 0], xs_pos[:, 1],
-                    'r', label='learned (t>0)', linewidth=1.2)
-            ax.plot(xs_neg[:, 0], xs_neg[:, 1],
-                    'c', label='learned (t<0)', linewidth=1.2)
+                    'g', label='true trajectory (full)', linewidth=1.5)
+            ax.plot(xs_forward[:, 0], xs_forward[:, 1],
+                    'r', label='learned forward from obs start', linewidth=1.2)
             ax.scatter(samp_traj[:, 0], samp_traj[:, 1],
-                       label='sampled data', s=3, alpha=0.6)
+                       label='observed data', s=4, alpha=0.7, color='blue')
 
-            ax.set_title(f'Spiral {spiral_idx}')
-            ax.legend(fontsize=7)
+            ax.set_title(f'Spiral {spiral_idx} (obs start at t≈{t_start:.2f})')
+            ax.legend(fontsize=8)
 
         plt.tight_layout()
         plt.savefig(save_path, dpi=300)
         plt.close()
-        print(f'Saved visualization figure at {save_path}')       
+        print(f'Saved visualization (forward-only) at {save_path}')      
 
 if __name__ == '__main__':
     args = parse_args()
@@ -109,16 +102,9 @@ if __name__ == '__main__':
         a=a, b=b, rng=data_rng
     )
 
-    half = nsample // 2
     orig_trajs = torch.from_numpy(orig_trajs).float().to(device)
     samp_trajs = torch.from_numpy(samp_trajs).float().to(device)
     samp_ts = torch.from_numpy(samp_ts).float().to(device)
-
-    #Splitting into encode and extrapolation trajectories
-    encode_trajs = samp_trajs[:, :half, :]
-    extrap_trajs = samp_trajs[:, half:, :]
-    encode_ts = samp_ts[:half]
-    extrap_ts = samp_ts[:half]
 
     # model
     func = LatentODEfunc(latent_dim, nhidden).to(device)
@@ -143,8 +129,8 @@ if __name__ == '__main__':
             h = rec.initHidden().to(device)
 
             #Encode first half
-            for t in reversed(range(encode_trajs.size(1))):
-                obs = encode_trajs[:, t, :]
+            for t in reversed(range(samp_trajs.size(1))):
+                obs = samp_trajs[:, t, :]
                 out, h = rec.forward(obs, h)
 
             qz0_mean, qz0_logvar = out[:, :latent_dim], out[:, latent_dim:]
@@ -152,7 +138,7 @@ if __name__ == '__main__':
             z0 = epsilon * torch.exp(.5 * qz0_logvar) + qz0_mean
 
             # forward in time and solve ode for reconstructions
-            pred_z = odeint(func, z0, extrap_ts).permute(1, 0, 2)
+            pred_z = odeint(func, z0, samp_ts).permute(1, 0, 2)
             pred_x = dec(pred_z)
 
             # compute loss
@@ -160,7 +146,7 @@ if __name__ == '__main__':
             noise_logvar = 2. * torch.log(noise_std_).to(device)
             
             logpx = log_normal_pdf(
-                extrap_trajs, pred_x, noise_logvar).sum(-1).sum(-1)
+                samp_trajs, pred_x, noise_logvar).sum(-1).sum(-1)
             pz0_mean = pz0_logvar = torch.zeros(z0.size()).to(device)
             analytic_kl = normal_kl(qz0_mean, qz0_logvar,
                                     pz0_mean, pz0_logvar).sum(-1)
@@ -184,11 +170,10 @@ if __name__ == '__main__':
             loss_raw = loss.item()
             elbo_raw = logpx.mean().item()
             wkl_raw = kl_weight * analytic_kl.mean().item()
-            mse = torch.mean((pred_x - extrap_trajs) ** 2).item()
 
-            csv_writer.writerow([itr, loss_raw, elbo_raw, analytic_kl.mean().item(), wkl_raw, kl_weight, mse])
+            csv_writer.writerow([itr, loss_raw, elbo_raw, analytic_kl.mean().item(), wkl_raw, kl_weight])
 
-            print('Iter: {}, running avg elbo: {:.4f}, running kl: {:.4f}, kl_weight: {:.4f}, mse: {:.4f}'.format(itr, -loss_meter.avg, analytic_kl.mean().item(), kl_weight, mse))
+            print('Iter: {}, running avg elbo: {:.4f}, running kl: {:.4f}, kl_weight: {:.4f}'.format(itr, -loss_meter.avg, analytic_kl.mean().item(), kl_weight))
 
     except KeyboardInterrupt:
         if args.train_dir is not None:

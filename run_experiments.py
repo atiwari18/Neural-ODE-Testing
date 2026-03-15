@@ -61,8 +61,8 @@ if __name__ == '__main__':
 
                 cmd = [
                     sys.executable,
-                    # Absolute path to script — no ambiguity on any OS
-                    str(EXPERIMENTS_DIR / "anneal_experiment.py"),
+                    #PATH TO SCRIPT CHANGE FOR RELEVANT EXPERIMENT
+                    str(EXPERIMENTS_DIR / "extrapolation_experiment.py"),
                     "--niters",    str(niters),
                     "--lr",        str(lr),
                     "--seed",      str(args.seed),
