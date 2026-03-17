@@ -82,28 +82,31 @@ def visualize(func, rec, dec, orig_trajs, samp_trajs, samp_ts, orig_ts_np,
         for plot_i, spiral_idx in enumerate(VIZ_SPIRAL_IDX):
             ax = axes[plot_i]
 
-            orig_traj = orig_trajs[spiral_idx].cpu().numpy()  # (ntotal, 2)
+            orig_traj = orig_trajs[spiral_idx].cpu().numpy()  #(ntotal, 2)
 
-            # --- Build a noisy observation spanning the FULL curve ---
-            # Add noise to every point on the original trajectory
+            #Build a noisy observation spanning the FULL curve
+            #Add noise to every point on the original trajectory
             noise = torch.randn_like(orig_trajs[spiral_idx]) * 0.2
-            full_noisy_traj = orig_trajs[spiral_idx] + noise  # (ntotal, 2)
+            full_noisy_traj = orig_trajs[spiral_idx] + noise  #(ntotal, 2)
 
-            # --- Encode full noisy trajectory in reverse to get z0 at t=0 ---
+            #Encode full noisy trajectory in reverse to get z0 at t=0
             h = rec.initHidden().to(device)
+            h = h[spiral_idx].unsqueeze(0)
             for t in reversed(range(full_noisy_traj.size(0))):
-                obs = full_noisy_traj[t, :].unsqueeze(0)  # (1, 2)
+                obs = full_noisy_traj[t, :].unsqueeze(0)  #(1, 2)
                 out, h = rec.forward(obs, h)
 
             qz0_mean, qz0_logvar = out[:, :latent_dim], out[:, latent_dim:]
             epsilon = torch.randn(qz0_mean.size()).to(device)
-            z0 = epsilon * torch.exp(0.5 * qz0_logvar) + qz0_mean  # (1, latent_dim)
+            z0 = epsilon * torch.exp(0.5 * qz0_logvar) + qz0_mean  #(1, latent_dim)
 
-            # --- Extrapolate from t=0 forward to extrap_stop ---
+            #Extrapolate from t=0 forward to extrap_stop
             ts_extrap = torch.linspace(orig_ts_np[0], extrap_stop, 3000).float().to(device)
-            xs_extrap = dec(odeint(func, z0, ts_extrap)).cpu().numpy()  # (3000, 2)
+            xs_extrap = dec(odeint(func, z0, ts_extrap)).squeeze(1).cpu().numpy()  #(3000, 2)
 
-            # --- Plot ---
+            #Plot
+            #orig_traj[:. 0] ==> all x coords
+            #orig_traj[:, 1] ==> all y coords
             ax.plot(orig_traj[:, 0], orig_traj[:, 1],
                     'g', label='true trajectory (train range)', linewidth=1.5)
             ax.plot(xs_extrap[:, 0], xs_extrap[:, 1],
@@ -112,12 +115,11 @@ def visualize(func, rec, dec, orig_trajs, samp_trajs, samp_ts, orig_ts_np,
                        full_noisy_traj[:, 1].cpu().numpy(),
                        label='full noisy obs (encoder input)', s=4, alpha=0.4, color='blue')
 
-            # Mark t=0 on the true trajectory
-            ax.scatter(*orig_traj[0], color='green', s=80, zorder=5, marker='o',
-                       label='t=0 (true)')
-            # Mark where extrapolation ends
-            ax.scatter(*xs_extrap[-1], color='red', s=80, zorder=5, marker='s',
-                       label=f't={extrap_stop/np.pi:.0f}π (extrap end)')
+            #Mark t=0 on the true trajectory
+            ax.scatter(*orig_traj[0], color='green', s=50, zorder=5, marker='o', label='t=0 (true)')
+            
+            #Mark where extrapolation ends
+            ax.scatter(*xs_extrap[-1], color='red', s=50, zorder=5, marker='s', label=f't={extrap_stop/np.pi:.0f}π (extrap end)')
 
             ax.set_title(f'Spiral {spiral_idx} — encoded to t=0, extrap to {extrap_stop/np.pi:.0f}π')
             ax.legend(fontsize=7)
