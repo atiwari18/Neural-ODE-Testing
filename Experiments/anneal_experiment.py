@@ -19,6 +19,7 @@ def parse_args():
     #Arguments
     parser.add_argument('--visualize', type=eval, default=False)
     parser.add_argument('--niters', type=int, default=2000)
+    parser.add_argument('--batch_size', type=int)
     parser.add_argument('--lr', type=float, default=0.01)
     parser.add_argument('--seed', type=int, default=42)
     parser.add_argument('--kl_anneal', type=eval, default=False, help='Use KL Annealing (TRUE) or fixed KL Weight (FALSE)')
@@ -37,7 +38,7 @@ def visualize(func, rec, dec, orig_trajs, samp_trajs, samp_ts, orig_ts_np, laten
             ax = axes[plot_i]
 
             # --- encode the full batch, then pick the desired spiral ---
-            h = rec.initHidden().to(device)
+            h = rec.initHidden(nbatch=nspiral).to(device)
             for t in reversed(range(samp_trajs.size(1))):
                 obs = samp_trajs[:, t, :]
                 out, h = rec.forward(obs, h)
@@ -86,9 +87,9 @@ if __name__ == '__main__':
     data_rng = npr.RandomState(args.seed)
     torch.manual_seed(args.seed)
 
-    latent_dim = 4
-    nhidden = 20
-    rnn_nhidden = 25
+    latent_dim = 6
+    nhidden = 40
+    rnn_nhidden = 45
     obs_dim = 2
     nspiral = 1000
     start = 0.
@@ -121,9 +122,9 @@ if __name__ == '__main__':
     loss_meter = RunningAverageMeter()
 
     anneal_label = "kl_anneal" if args.kl_anneal else "no_kl_anneal"
-    print(f'Starting training: niters={args.niters}, lr={args.lr}, 'f'kl_anneal={args.kl_anneal}, seed={args.seed}')
+    print(f'Starting training: niters={args.niters}, lr={args.lr}, batch_size={args.batch_size}, 'f'kl_anneal={args.kl_anneal}, seed={args.seed}')
     
-    log_path = f'./log-{args.niters}-{args.lr}-{anneal_label}.csv'
+    log_path = f'./log-{args.niters}-{args.lr}-{anneal_label}-{args.batch_size}.csv'
     log_file = open(log_path, 'w', newline='')
     csv_writer = csv.writer(log_file)
     csv_writer.writerow(['iter', 'loss', 'elbo', 'kl', 'weighted_kl', 'kl_weight'])
@@ -131,11 +132,15 @@ if __name__ == '__main__':
     try:
         for itr in range(1, args.niters + 1):
             optimizer.zero_grad()
-            # backward in time to infer q(z_0)
-            h = rec.initHidden().to(device)
 
-            for t in reversed(range(samp_trajs.size(1))):
-                obs = samp_trajs[:, t, :]
+            idx = torch.randperm(nspiral)[:args.batch_size]
+            samp_batch = samp_trajs[idx]
+
+            # backward in time to infer q(z_0)
+            h = rec.initHidden(nbatch=args.batch_size).to(device)
+
+            for t in reversed(range(samp_batch.size(1))):
+                obs = samp_batch[:, t, :]
                 out, h = rec.forward(obs, h)
                 
             qz0_mean, qz0_logvar = out[:, :latent_dim], out[:, latent_dim:]
@@ -151,7 +156,7 @@ if __name__ == '__main__':
             noise_logvar = 2. * torch.log(noise_std_).to(device)
             
             logpx = log_normal_pdf(
-                samp_trajs, pred_x, noise_logvar).sum(-1).sum(-1)
+                samp_batch, pred_x, noise_logvar).sum(-1).sum(-1)
             pz0_mean = pz0_logvar = torch.zeros(z0.size()).to(device)
             analytic_kl = normal_kl(qz0_mean, qz0_logvar,
                                     pz0_mean, pz0_logvar).sum(-1)
@@ -168,6 +173,8 @@ if __name__ == '__main__':
 
             loss = torch.mean(-logpx + kl_weight*analytic_kl, dim=0)
             loss.backward()
+            total_norm = torch.nn.utils.clip_grad_norm_(params, max_norm=15000.0)
+            print(f'grad norm: {total_norm:.4f}')
             optimizer.step()
             loss_meter.update(loss.item())
 
@@ -204,7 +211,7 @@ if __name__ == '__main__':
         torch.cuda.empty_cache()
 
     if args.visualize:
-        fig_name = f'./vis-{args.niters}-{args.lr}-{anneal_label}.png'
+        fig_name = f'./vis-{args.niters}-{args.lr}-{anneal_label}-{args.batch_size}.png'
         visualize(
             func, rec, dec,
             orig_trajs, samp_trajs, samp_ts,
