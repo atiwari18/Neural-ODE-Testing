@@ -36,7 +36,8 @@ def generate_spiral2d(nspiral=1000,
                       a=0.,
                       b=1.,
                       savefig=True,
-                      rng=None):
+                      rng=None, 
+                      start_at_center=False):
     """Parametric formula for 2d spiral is `r = a + b * theta`.
 
     Args:
@@ -87,17 +88,23 @@ def generate_spiral2d(nspiral=1000,
     orig_trajs = []
     samp_trajs = []
     for _ in range(nspiral):
-        # don't sample t0 very near the start or the end
-        #independently draws a new random t0 for each of the 1000 spirals. 
-        #So each trajectory gets its own random starting point, and the 100-point window 
-        #[t0_idx : t0_idx + nsample] is cut from that unique position.
-        t0_idx = rng.multinomial(
-            1, [1. / (ntotal - 2. * nsample)] * (ntotal - int(2 * nsample)))
-        t0_idx = np.argmax(t0_idx) + nsample
-
         cc = bool(rng.rand() > .5)  # uniformly select rotation
         orig_traj = orig_traj_cc if cc else orig_traj_cw
         orig_trajs.append(orig_traj)
+
+        if start_at_center:
+            t0_idx = rng.multinomial(
+                1, [1. / (ntotal - nsample)] * (ntotal - nsample))
+            t0_idx = np.argmax(t0_idx)
+
+        else:
+            # don't sample t0 very near the start or the end
+            #independently draws a new random t0 for each of the 1000 spirals. 
+            #So each trajectory gets its own random starting point, and the 100-point window 
+            #[t0_idx : t0_idx + nsample] is cut from that unique position.
+            t0_idx = rng.multinomial(
+                1, [1. / (ntotal - 2. * nsample)] * (ntotal - int(2 * nsample)))
+            t0_idx = np.argmax(t0_idx) + nsample
 
         samp_traj = orig_traj[t0_idx:t0_idx + nsample, :].copy()
         samp_traj += rng.randn(*samp_traj.shape) * noise_std

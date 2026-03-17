@@ -39,7 +39,7 @@ def parse_args():
 if __name__ == '__main__':
     args = parse_args()
 
-    NITERS_LIST    = [1000]
+    NITERS_LIST    = [100]
     KL_ANNEAL_LIST = [True]
     LR_LIST        = [0.005]
 

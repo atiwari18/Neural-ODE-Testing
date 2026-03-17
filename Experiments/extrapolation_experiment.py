@@ -73,8 +73,8 @@ def plot_original_trajectories(orig_trajs, samp_trajs, orig_ts, n_plot=10, figsi
 #Indicies of the 4 spirals
 VIZ_SPIRAL_IDX = [0, 1, 2, 3]
 
-def visualize(func, rec, dec, orig_trajs, samp_trajs, samp_ts, orig_ts_np,
-              start_idxs, latent_dim, device, save_path):
+def visualize(func, rec, dec, orig_trajs, samp_trajs, samp_ts, orig_ts_np, 
+              latent_dim, device, save_path, extrap_stop=8*np.pi):
     with torch.no_grad():
         fig, axes = plt.subplots(2, 2, figsize=(12, 10))
         axes = axes.flatten()
@@ -82,47 +82,50 @@ def visualize(func, rec, dec, orig_trajs, samp_trajs, samp_ts, orig_ts_np,
         for plot_i, spiral_idx in enumerate(VIZ_SPIRAL_IDX):
             ax = axes[plot_i]
 
-            # encode exactly as training
+            orig_traj = orig_trajs[spiral_idx].cpu().numpy()  # (ntotal, 2)
+
+            # --- Build a noisy observation spanning the FULL curve ---
+            # Add noise to every point on the original trajectory
+            noise = torch.randn_like(orig_trajs[spiral_idx]) * 0.2
+            full_noisy_traj = orig_trajs[spiral_idx] + noise  # (ntotal, 2)
+
+            # --- Encode full noisy trajectory in reverse to get z0 at t=0 ---
             h = rec.initHidden().to(device)
-            for t in reversed(range(samp_trajs.size(1))):
-                obs = samp_trajs[:, t, :]
+            for t in reversed(range(full_noisy_traj.size(0))):
+                obs = full_noisy_traj[t, :].unsqueeze(0)  # (1, 2)
                 out, h = rec.forward(obs, h)
 
             qz0_mean, qz0_logvar = out[:, :latent_dim], out[:, latent_dim:]
             epsilon = torch.randn(qz0_mean.size()).to(device)
-            z0_all = epsilon * torch.exp(0.5 * qz0_logvar) + qz0_mean
-            z0 = z0_all[spiral_idx]
+            z0 = epsilon * torch.exp(0.5 * qz0_logvar) + qz0_mean  # (1, latent_dim)
 
-            orig_traj = orig_trajs[spiral_idx].cpu().numpy()
-            samp_traj = samp_trajs[spiral_idx].cpu().numpy()
-            t0_idx = start_idxs[spiral_idx]
-            abs_start_t = orig_ts_np[t0_idx]          # real start time for THIS spiral
+            # --- Extrapolate from t=0 forward to extrap_stop ---
+            ts_extrap = torch.linspace(orig_ts_np[0], extrap_stop, 3000).float().to(device)
+            xs_extrap = dec(odeint(func, z0, ts_extrap)).cpu().numpy()  # (3000, 2)
 
-            # Forward extrapolation
-            ts_fwd = torch.linspace(abs_start_t, orig_ts_np[-1], 2000).float().to(device)
-            xs_fwd = dec(odeint(func, z0, ts_fwd)).cpu().numpy()
-
-            # Backward extrapolation (now trained!)
-            back_span = abs_start_t - orig_ts_np[0]   # how far back we can go
-            ts_back = torch.linspace(abs_start_t, abs_start_t - back_span, 1000).float().to(device)
-            xs_back = dec(odeint(func, z0, ts_back)).cpu().numpy()
-
+            # --- Plot ---
             ax.plot(orig_traj[:, 0], orig_traj[:, 1],
-                    'g', label='true trajectory (full)', linewidth=1.5)
-            ax.plot(xs_fwd[:, 0], xs_fwd[:, 1],
-                    'r', label='learned forward', linewidth=1.2)
-            ax.plot(xs_back[:, 0], xs_back[:, 1],
-                    'c', label='learned backward', linewidth=1.2)
-            ax.scatter(samp_traj[:, 0], samp_traj[:, 1],
-                       label='observed data', s=4, alpha=0.7, color='blue')
+                    'g', label='true trajectory (train range)', linewidth=1.5)
+            ax.plot(xs_extrap[:, 0], xs_extrap[:, 1],
+                    'r', label=f'extrapolated (t=0 → {extrap_stop/np.pi:.0f}π)', linewidth=1.2)
+            ax.scatter(full_noisy_traj[:, 0].cpu().numpy(),
+                       full_noisy_traj[:, 1].cpu().numpy(),
+                       label='full noisy obs (encoder input)', s=4, alpha=0.4, color='blue')
 
-            ax.set_title(f'Spiral {spiral_idx} (obs start at t≈{abs_start_t:.2f})')
-            ax.legend(fontsize=8)
+            # Mark t=0 on the true trajectory
+            ax.scatter(*orig_traj[0], color='green', s=80, zorder=5, marker='o',
+                       label='t=0 (true)')
+            # Mark where extrapolation ends
+            ax.scatter(*xs_extrap[-1], color='red', s=80, zorder=5, marker='s',
+                       label=f't={extrap_stop/np.pi:.0f}π (extrap end)')
+
+            ax.set_title(f'Spiral {spiral_idx} — encoded to t=0, extrap to {extrap_stop/np.pi:.0f}π')
+            ax.legend(fontsize=7)
 
         plt.tight_layout()
         plt.savefig(save_path, dpi=300)
         plt.close()
-        print(f'Saved bidirectional visualization at {save_path}')    
+        print(f'Saved extrapolation visualization at {save_path}')    
      
 
 if __name__ == '__main__':
@@ -152,112 +155,112 @@ if __name__ == '__main__':
         start=start,
         stop=stop,
         noise_std=noise_std,
-        a=a, b=b, rng=data_rng
+        a=a, b=b, rng=data_rng, start_at_center=True
     )
 
     orig_trajs = torch.from_numpy(orig_trajs).float().to(device)
     samp_trajs = torch.from_numpy(samp_trajs).float().to(device)
     samp_ts = torch.from_numpy(samp_ts).float().to(device)
 
-    plot_original_trajectories(orig_trajs, samp_trajs, orig_ts, n_plot=2)
+    plot_original_trajectories(orig_trajs, samp_trajs, orig_ts, n_plot=20)
 
-    # # model
-    # func = LatentODEfunc(latent_dim, nhidden).to(device)
-    # rec = RecognitionRNN(latent_dim, obs_dim, rnn_nhidden, nspiral).to(device)
-    # dec = Decoder(latent_dim, obs_dim, nhidden).to(device)
-    # params = (list(func.parameters()) + list(dec.parameters()) + list(rec.parameters()))
-    # optimizer = optim.Adam(params, lr=args.lr)
-    # loss_meter = RunningAverageMeter()
+    # model
+    func = LatentODEfunc(latent_dim, nhidden).to(device)
+    rec = RecognitionRNN(latent_dim, obs_dim, rnn_nhidden, nspiral).to(device)
+    dec = Decoder(latent_dim, obs_dim, nhidden).to(device)
+    params = (list(func.parameters()) + list(dec.parameters()) + list(rec.parameters()))
+    optimizer = optim.Adam(params, lr=args.lr)
+    loss_meter = RunningAverageMeter()
 
-    # anneal_label = "kl_anneal" if args.kl_anneal else "no_kl_anneal"
-    # print(f'Starting training: niters={args.niters}, lr={args.lr}, 'f'kl_anneal={args.kl_anneal}, seed={args.seed}')
+    anneal_label = "kl_anneal" if args.kl_anneal else "no_kl_anneal"
+    print(f'Starting training: niters={args.niters}, lr={args.lr}, 'f'kl_anneal={args.kl_anneal}, seed={args.seed}')
     
-    # log_path = f'./log-{args.niters}-{args.lr}-{anneal_label}.csv'
-    # log_file = open(log_path, 'w', newline='')
-    # csv_writer = csv.writer(log_file)
-    # csv_writer.writerow(['iter', 'loss', 'elbo', 'kl', 'weighted_kl', 'kl_weight', 'extrap_mse'])
+    log_path = f'./log-{args.niters}-{args.lr}-{anneal_label}.csv'
+    log_file = open(log_path, 'w', newline='')
+    csv_writer = csv.writer(log_file)
+    csv_writer.writerow(['iter', 'loss', 'elbo', 'kl', 'weighted_kl', 'kl_weight', 'extrap_mse'])
 
-    # try:
-    #     for itr in range(1, args.niters + 1):
-    #         optimizer.zero_grad()
-    #         # backward in time to infer q(z_0)
-    #         h = rec.initHidden().to(device)
+    try:
+        for itr in range(1, args.niters + 1):
+            optimizer.zero_grad()
+            # backward in time to infer q(z_0)
+            h = rec.initHidden().to(device)
 
-    #         #Encode first half
-    #         for t in reversed(range(samp_trajs.size(1))):
-    #             obs = samp_trajs[:, t, :]
-    #             out, h = rec.forward(obs, h)
+            #Encode first half
+            for t in reversed(range(samp_trajs.size(1))):
+                obs = samp_trajs[:, t, :]
+                out, h = rec.forward(obs, h)
 
-    #         qz0_mean, qz0_logvar = out[:, :latent_dim], out[:, latent_dim:]
-    #         epsilon = torch.randn(qz0_mean.size()).to(device)
-    #         z0 = epsilon * torch.exp(.5 * qz0_logvar) + qz0_mean
+            qz0_mean, qz0_logvar = out[:, :latent_dim], out[:, latent_dim:]
+            epsilon = torch.randn(qz0_mean.size()).to(device)
+            z0 = epsilon * torch.exp(.5 * qz0_logvar) + qz0_mean
 
-    #         # forward in time and solve ode for reconstructions
-    #         pred_z = odeint(func, z0, samp_ts).permute(1, 0, 2)
-    #         pred_x = dec(pred_z)
+            # forward in time and solve ode for reconstructions
+            pred_z = odeint(func, z0, samp_ts).permute(1, 0, 2)
+            pred_x = dec(pred_z)
 
-    #         # compute loss
-    #         noise_std_ = torch.zeros(pred_x.size()).to(device) + noise_std
-    #         noise_logvar = 2. * torch.log(noise_std_).to(device)
+            # compute loss
+            noise_std_ = torch.zeros(pred_x.size()).to(device) + noise_std
+            noise_logvar = 2. * torch.log(noise_std_).to(device)
             
-    #         logpx = log_normal_pdf(
-    #             samp_trajs, pred_x, noise_logvar).sum(-1).sum(-1)
-    #         pz0_mean = pz0_logvar = torch.zeros(z0.size()).to(device)
-    #         analytic_kl = normal_kl(qz0_mean, qz0_logvar,
-    #                                 pz0_mean, pz0_logvar).sum(-1)
+            logpx = log_normal_pdf(
+                samp_trajs, pred_x, noise_logvar).sum(-1).sum(-1)
+            pz0_mean = pz0_logvar = torch.zeros(z0.size()).to(device)
+            analytic_kl = normal_kl(qz0_mean, qz0_logvar,
+                                    pz0_mean, pz0_logvar).sum(-1)
 
-    #         #Annealing strategy from: https://github.com/YuliaRubanova/latent_ode/blob/master/run_models.py#L259
-    #         wait_until_kl_inc = args.niters // 10
-    #         if args.kl_anneal:
-    #             if itr < wait_until_kl_inc:
-    #                 kl_weight = 0
-    #             else:
-    #                 kl_weight = (1 - 0.99 ** (itr - wait_until_kl_inc))
-    #         else:
-    #             kl_weight = 1.0
+            #Annealing strategy from: https://github.com/YuliaRubanova/latent_ode/blob/master/run_models.py#L259
+            wait_until_kl_inc = args.niters // 10
+            if args.kl_anneal:
+                if itr < wait_until_kl_inc:
+                    kl_weight = 0
+                else:
+                    kl_weight = (1 - 0.99 ** (itr - wait_until_kl_inc))
+            else:
+                kl_weight = 1.0
 
-    #         loss = torch.mean(-logpx + kl_weight*analytic_kl, dim=0)
-    #         loss.backward()
-    #         optimizer.step()
-    #         loss_meter.update(loss.item())
+            loss = torch.mean(-logpx + kl_weight*analytic_kl, dim=0)
+            loss.backward()
+            optimizer.step()
+            loss_meter.update(loss.item())
 
-    #         #raw per-iteration values
-    #         loss_raw = loss.item()
-    #         elbo_raw = logpx.mean().item()
-    #         wkl_raw = kl_weight * analytic_kl.mean().item()
+            #raw per-iteration values
+            loss_raw = loss.item()
+            elbo_raw = logpx.mean().item()
+            wkl_raw = kl_weight * analytic_kl.mean().item()
 
-    #         csv_writer.writerow([itr, loss_raw, elbo_raw, analytic_kl.mean().item(), wkl_raw, kl_weight])
+            csv_writer.writerow([itr, loss_raw, elbo_raw, analytic_kl.mean().item(), wkl_raw, kl_weight])
 
-    #         print('Iter: {}, running avg elbo: {:.4f}, running kl: {:.4f}, kl_weight: {:.4f}'.format(itr, -loss_meter.avg, analytic_kl.mean().item(), kl_weight))
+            print('Iter: {}, running avg elbo: {:.4f}, running kl: {:.4f}, kl_weight: {:.4f}'.format(itr, -loss_meter.avg, analytic_kl.mean().item(), kl_weight))
 
-    # except KeyboardInterrupt:
-    #     if args.train_dir is not None:
-    #         ckpt_path = os.path.join(args.train_dir, 'ckpt.pth')
-    #         torch.save({
-    #             'func_state_dict': func.state_dict(),
-    #             'rec_state_dict': rec.state_dict(),
-    #             'dec_state_dict': dec.state_dict(),
-    #             'optimizer_state_dict': optimizer.state_dict(),
-    #             'orig_trajs': orig_trajs,
-    #             'samp_trajs': samp_trajs,
-    #             'orig_ts': orig_ts,
-    #             'samp_ts': samp_ts,
-    #         }, ckpt_path)
-    #         print('Stored ckpt at {}'.format(ckpt_path))
+    except KeyboardInterrupt:
+        if args.train_dir is not None:
+            ckpt_path = os.path.join(args.train_dir, 'ckpt.pth')
+            torch.save({
+                'func_state_dict': func.state_dict(),
+                'rec_state_dict': rec.state_dict(),
+                'dec_state_dict': dec.state_dict(),
+                'optimizer_state_dict': optimizer.state_dict(),
+                'orig_trajs': orig_trajs,
+                'samp_trajs': samp_trajs,
+                'orig_ts': orig_ts,
+                'samp_ts': samp_ts,
+            }, ckpt_path)
+            print('Stored ckpt at {}'.format(ckpt_path))
 
-    # log_file.close()
-    # print(f"Saved training log to {log_path}")
-    # print(f'Training complete after {itr} iters.')
+    log_file.close()
+    print(f"Saved training log to {log_path}")
+    print(f'Training complete after {itr} iters.')
 
-    # #ensures memory is returned to the driver cleanly.
-    # if torch.cuda.is_available():
-    #     torch.cuda.empty_cache()
+    #ensures memory is returned to the driver cleanly.
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
 
-    # if args.visualize:
-    #     fig_name = f'./vis-{args.niters}-{args.lr}-{anneal_label}.png'
-    #     visualize(
-    #         func, rec, dec,
-    #         orig_trajs, samp_trajs, samp_ts,
-    #         orig_ts, start_idxs, latent_dim, device,
-    #         save_path=fig_name
-    #     )
+    if args.visualize:
+        fig_name = f'./vis-{args.niters}-{args.lr}-{anneal_label}.png'
+        visualize(
+            func, rec, dec,
+            orig_trajs, samp_trajs, samp_ts,
+            orig_ts, latent_dim, device,
+            save_path=fig_name
+        )
