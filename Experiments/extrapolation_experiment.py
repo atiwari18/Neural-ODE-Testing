@@ -25,10 +25,56 @@ def parse_args():
 
     return parser.parse_args()
 
+def plot_original_trajectories(orig_trajs, samp_trajs, orig_ts, n_plot=10, figsize=(10, 6), savepath='./trajectories.png'):
+    """
+    Plots a subset of the original full-length spiral trajectories,
+    marking the start (t=0) and end (t=T) of each, with noisy samples overlaid.
+
+    Args:
+        orig_trajs:  np.ndarray of shape (nspiral, ntotal, 2) — full trajectories
+        samp_trajs:  np.ndarray of shape (nspiral, nsample, 2) — noisy sampled observations
+        orig_ts:     np.ndarray of shape (ntotal,) — timestamps for the full trajectories
+        n_plot:      number of trajectories to plot (default: 10)
+        figsize:     figure size tuple (default: (10, 6))
+        savepath:    path to save the figure (default: './trajectories.png')
+    """
+    n_plot = min(n_plot, len(orig_trajs))
+
+    fig, ax = plt.subplots(figsize=figsize)
+
+    for i in range(n_plot):
+        traj = orig_trajs[i]       # shape: (ntotal, 2)
+        samp = samp_trajs[i]       # shape: (nsample, 2)
+        color = plt.cm.tab10(i % 10)
+
+        # Plot full trajectory
+        ax.plot(traj[:, 0], traj[:, 1], alpha=0.5, linewidth=0.8, color=color)
+
+        # Plot noisy observations as small dots
+        ax.scatter(samp[:, 0], samp[:, 1], color=color, s=6, alpha=0.6, zorder=4,
+                   label='noisy obs' if i == 0 else None)
+
+        # Mark t=start with a green circle
+        ax.scatter(*traj[0], color='green', s=40, zorder=5,
+                   label='t=start' if i == 0 else None)
+        # Mark t=end with a red square
+        ax.scatter(*traj[-1], color='red', marker='s', s=40, zorder=5,
+                   label='t=end' if i == 0 else None)
+
+    ax.set_title(f'Original Full-Length Trajectories (n={n_plot})')
+    ax.set_xlabel('x')
+    ax.set_ylabel('y')
+    ax.legend(loc='upper right', fontsize=8)
+    plt.tight_layout()
+    plt.savefig(savepath, dpi=500)
+    plt.close()
+    print('Saved trajectory plot at {}'.format(savepath))
+
 #Indicies of the 4 spirals
 VIZ_SPIRAL_IDX = [0, 1, 2, 3]
 
-def visualize(func, rec, dec, orig_trajs, samp_trajs, samp_ts, orig_ts_np, latent_dim, device, save_path):
+def visualize(func, rec, dec, orig_trajs, samp_trajs, samp_ts, orig_ts_np, 
+              latent_dim, device, save_path, extrap_stop=8*np.pi):
     with torch.no_grad():
         fig, axes = plt.subplots(2, 2, figsize=(12, 10))
         axes = axes.flatten()
@@ -36,48 +82,53 @@ def visualize(func, rec, dec, orig_trajs, samp_trajs, samp_ts, orig_ts_np, laten
         for plot_i, spiral_idx in enumerate(VIZ_SPIRAL_IDX):
             ax = axes[plot_i]
 
-            # --- encode the full batch, then pick the desired spiral ---
+            orig_traj = orig_trajs[spiral_idx].cpu().numpy()  #(ntotal, 2)
+
+            #Build a noisy observation spanning the FULL curve
+            #Add noise to every point on the original trajectory
+            noise = torch.randn_like(orig_trajs[spiral_idx]) * 0.2
+            full_noisy_traj = orig_trajs[spiral_idx] + noise  #(ntotal, 2)
+
+            #Encode full noisy trajectory in reverse to get z0 at t=0
             h = rec.initHidden().to(device)
-            for t in reversed(range(samp_trajs.size(1))):
-                obs = samp_trajs[:, t, :]
+            h = h[spiral_idx].unsqueeze(0)
+            for t in reversed(range(full_noisy_traj.size(0))):
+                obs = full_noisy_traj[t, :].unsqueeze(0)  #(1, 2)
                 out, h = rec.forward(obs, h)
+
             qz0_mean, qz0_logvar = out[:, :latent_dim], out[:, latent_dim:]
             epsilon = torch.randn(qz0_mean.size()).to(device)
-            z0_all = epsilon * torch.exp(.5 * qz0_logvar) + qz0_mean
+            z0 = epsilon * torch.exp(0.5 * qz0_logvar) + qz0_mean  #(1, latent_dim)
 
-            z0 = z0_all[spiral_idx]  # shape: (latent_dim,)
+            #Extrapolate from t=0 forward to extrap_stop
+            ts_extrap = torch.linspace(orig_ts_np[0], extrap_stop, 3000).float().to(device)
+            xs_extrap = dec(odeint(func, z0, ts_extrap)).squeeze(1).cpu().numpy()  #(3000, 2)
 
-            ts_pos = torch.from_numpy(
-                np.linspace(0., 2. * np.pi, num=2000)
-            ).float().to(device)
-            ts_neg = torch.from_numpy(
-                np.linspace(-np.pi, 0., num=2000)[::-1].copy()
-            ).float().to(device)
-
-            xs_pos = dec(odeint(func, z0, ts_pos)).cpu().numpy()
-            xs_neg = torch.flip(
-                dec(odeint(func, z0, ts_neg)), dims=[0]
-            ).cpu().numpy()
-
-            orig_traj = orig_trajs[spiral_idx].cpu().numpy()
-            samp_traj = samp_trajs[spiral_idx].cpu().numpy()
-
+            #Plot
+            #orig_traj[:. 0] ==> all x coords
+            #orig_traj[:, 1] ==> all y coords
             ax.plot(orig_traj[:, 0], orig_traj[:, 1],
-                    'g', label='true trajectory', linewidth=1.5)
-            ax.plot(xs_pos[:, 0], xs_pos[:, 1],
-                    'r', label='learned (t>0)', linewidth=1.2)
-            ax.plot(xs_neg[:, 0], xs_neg[:, 1],
-                    'c', label='learned (t<0)', linewidth=1.2)
-            ax.scatter(samp_traj[:, 0], samp_traj[:, 1],
-                       label='sampled data', s=3, alpha=0.6)
+                    'g', label='true trajectory (train range)', linewidth=1.5)
+            ax.plot(xs_extrap[:, 0], xs_extrap[:, 1],
+                    'r', label=f'extrapolated (t=0 → {extrap_stop/np.pi:.0f}π)', linewidth=1.2)
+            ax.scatter(full_noisy_traj[:, 0].cpu().numpy(),
+                       full_noisy_traj[:, 1].cpu().numpy(),
+                       label='full noisy obs (encoder input)', s=4, alpha=0.4, color='blue')
 
-            ax.set_title(f'Spiral {spiral_idx}')
+            #Mark t=0 on the true trajectory
+            ax.scatter(*orig_traj[0], color='green', s=50, zorder=5, marker='o', label='t=0 (true)')
+            
+            #Mark where extrapolation ends
+            ax.scatter(*xs_extrap[-1], color='red', s=50, zorder=5, marker='s', label=f't={extrap_stop/np.pi:.0f}π (extrap end)')
+
+            ax.set_title(f'Spiral {spiral_idx} — encoded to t=0, extrap to {extrap_stop/np.pi:.0f}π')
             ax.legend(fontsize=7)
 
         plt.tight_layout()
         plt.savefig(save_path, dpi=300)
         plt.close()
-        print(f'Saved visualization figure at {save_path}')       
+        print(f'Saved extrapolation visualization at {save_path}')    
+     
 
 if __name__ == '__main__':
     args = parse_args()
@@ -96,7 +147,7 @@ if __name__ == '__main__':
     noise_std = 0.2
     a = 0.
     b = .3
-    ntotal = 1000
+    ntotal = 1500
     nsample = 100
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -106,11 +157,14 @@ if __name__ == '__main__':
         start=start,
         stop=stop,
         noise_std=noise_std,
-        a=a, b=b, rng=data_rng
+        a=a, b=b, rng=data_rng, start_at_center=True
     )
+
     orig_trajs = torch.from_numpy(orig_trajs).float().to(device)
     samp_trajs = torch.from_numpy(samp_trajs).float().to(device)
     samp_ts = torch.from_numpy(samp_ts).float().to(device)
+
+    plot_original_trajectories(orig_trajs, samp_trajs, orig_ts, n_plot=20)
 
     # model
     func = LatentODEfunc(latent_dim, nhidden).to(device)
@@ -126,7 +180,7 @@ if __name__ == '__main__':
     log_path = f'./log-{args.niters}-{args.lr}-{anneal_label}.csv'
     log_file = open(log_path, 'w', newline='')
     csv_writer = csv.writer(log_file)
-    csv_writer.writerow(['iter', 'loss', 'elbo', 'kl', 'weighted_kl', 'kl_weight'])
+    csv_writer.writerow(['iter', 'loss', 'elbo', 'kl', 'weighted_kl', 'kl_weight', 'extrap_mse'])
 
     try:
         for itr in range(1, args.niters + 1):
@@ -134,10 +188,11 @@ if __name__ == '__main__':
             # backward in time to infer q(z_0)
             h = rec.initHidden().to(device)
 
+            #Encode first half
             for t in reversed(range(samp_trajs.size(1))):
                 obs = samp_trajs[:, t, :]
                 out, h = rec.forward(obs, h)
-                
+
             qz0_mean, qz0_logvar = out[:, :latent_dim], out[:, latent_dim:]
             epsilon = torch.randn(qz0_mean.size()).to(device)
             z0 = epsilon * torch.exp(.5 * qz0_logvar) + qz0_mean
