@@ -135,10 +135,10 @@ if __name__ == '__main__':
 
             idx = torch.randperm(nspiral)[:args.batch_size]
             samp_batch = samp_trajs[idx]
+            batch_ts = samp_ts[idx]
 
             # backward in time to infer q(z_0)
             h = rec.initHidden(nbatch=args.batch_size).to(device)
-
             for t in reversed(range(samp_batch.size(1))):
                 obs = samp_batch[:, t, :]
                 out, h = rec.forward(obs, h)
@@ -147,8 +147,16 @@ if __name__ == '__main__':
             epsilon = torch.randn(qz0_mean.size()).to(device)
             z0 = epsilon * torch.exp(.5 * qz0_logvar) + qz0_mean
 
-            # forward in time and solve ode for reconstructions
-            pred_z = odeint(func, z0, samp_ts).permute(1, 0, 2)
+            #forward in time and solve ode for reconstructions
+            #now we have a per spiral odeint since each slice has a different start and time.
+            preds = []
+            for i in range(args.batch_size):
+                ts_i = batch_ts[i]
+                z0_i = z0[i].unsqueeze(0)
+                pred_z_i = odeint(func, z0_i, ts_i)
+                preds.append(pred_z_i.permute(1, 0, 2))
+            
+            pred_z = torch.cat(preds, dim=0)
             pred_x = dec(pred_z)
 
             # compute loss
@@ -173,7 +181,7 @@ if __name__ == '__main__':
 
             loss = torch.mean(-logpx + kl_weight*analytic_kl, dim=0)
             loss.backward()
-            total_norm = torch.nn.utils.clip_grad_norm_(params, max_norm=15000.0)
+            total_norm = torch.nn.utils.get_total_norm(params)
             print(f'grad norm: {total_norm:.4f}')
             optimizer.step()
             loss_meter.update(loss.item())
