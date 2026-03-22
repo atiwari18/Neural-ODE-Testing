@@ -19,7 +19,6 @@ def parse_args():
     #Arguments
     parser.add_argument('--visualize', type=eval, default=False)
     parser.add_argument('--niters', type=int, default=2000)
-    parser.add_argument('--batch_size', type=int)
     parser.add_argument('--lr', type=float, default=0.01)
     parser.add_argument('--seed', type=int, default=42)
     parser.add_argument('--kl_anneal', type=eval, default=False, help='Use KL Annealing (TRUE) or fixed KL Weight (FALSE)')
@@ -48,14 +47,28 @@ def visualize(func, rec, dec, orig_trajs, samp_trajs, samp_ts, orig_ts_np, laten
 
             z0 = z0_all[spiral_idx]  # shape: (latent_dim,)
 
+            # ts_pos = torch.from_numpy(
+            #     np.linspace(0., 2. * np.pi, num=2000)
+            # ).float().to(device)
+
+            # ts_neg = torch.from_numpy(
+            #     np.linspace(-np.pi, 0., num=2000)[::-1].copy()
+            # ).float().to(device)
+
+            #Negatie direction now corresponds to earlier time regions.
+            t0_i = samp_ts[spiral_idx][0].item()
+
             ts_pos = torch.from_numpy(
-                np.linspace(0., 2. * np.pi, num=2000)
+                np.linspace(t0_i, 6. * np.pi, num=2000)
             ).float().to(device)
+
             ts_neg = torch.from_numpy(
-                np.linspace(-np.pi, 0., num=2000)[::-1].copy()
+                np.linspace(0., t0_i, num=2000)
             ).float().to(device)
 
             xs_pos = dec(odeint(func, z0, ts_pos)).cpu().numpy()
+
+            #Flipping the order of outputs for visualization. So the line draws from t0 --> 0
             xs_neg = torch.flip(
                 dec(odeint(func, z0, ts_neg)), dims=[0]
             ).cpu().numpy()
@@ -91,7 +104,7 @@ if __name__ == '__main__':
     nhidden = 40
     rnn_nhidden = 45
     obs_dim = 2
-    nspiral = 1000
+    nspiral = 100
     start = 0.
     stop = 6 * np.pi
     noise_std = 0.2
@@ -122,9 +135,9 @@ if __name__ == '__main__':
     loss_meter = RunningAverageMeter()
 
     anneal_label = "kl_anneal" if args.kl_anneal else "no_kl_anneal"
-    print(f'Starting training: niters={args.niters}, lr={args.lr}, batch_size={args.batch_size}, 'f'kl_anneal={args.kl_anneal}, seed={args.seed}')
+    print(f'Starting training: niters={args.niters}, lr={args.lr}, 'f'kl_anneal={args.kl_anneal}, seed={args.seed}')
     
-    log_path = f'./log-{args.niters}-{args.lr}-{anneal_label}-{args.batch_size}.csv'
+    log_path = f'./log-{args.niters}-{args.lr}-{anneal_label}.csv'
     log_file = open(log_path, 'w', newline='')
     csv_writer = csv.writer(log_file)
     csv_writer.writerow(['iter', 'loss', 'elbo', 'kl', 'weighted_kl', 'kl_weight'])
@@ -133,14 +146,10 @@ if __name__ == '__main__':
         for itr in range(1, args.niters + 1):
             optimizer.zero_grad()
 
-            idx = torch.randperm(nspiral)[:args.batch_size]
-            samp_batch = samp_trajs[idx]
-            batch_ts = samp_ts[idx]
-
             # backward in time to infer q(z_0)
-            h = rec.initHidden(nbatch=args.batch_size).to(device)
-            for t in reversed(range(samp_batch.size(1))):
-                obs = samp_batch[:, t, :]
+            h = rec.initHidden().to(device)
+            for t in reversed(range(samp_trajs.size(1))):
+                obs = samp_trajs[:, t, :]
                 out, h = rec.forward(obs, h)
                 
             qz0_mean, qz0_logvar = out[:, :latent_dim], out[:, latent_dim:]
@@ -150,8 +159,8 @@ if __name__ == '__main__':
             #forward in time and solve ode for reconstructions
             #now we have a per spiral odeint since each slice has a different start and time.
             preds = []
-            for i in range(args.batch_size):
-                ts_i = batch_ts[i]
+            for i in range(nspiral):
+                ts_i = samp_ts[i]
                 z0_i = z0[i].unsqueeze(0)
                 pred_z_i = odeint(func, z0_i, ts_i)
                 preds.append(pred_z_i.permute(1, 0, 2))
@@ -164,7 +173,7 @@ if __name__ == '__main__':
             noise_logvar = 2. * torch.log(noise_std_).to(device)
             
             logpx = log_normal_pdf(
-                samp_batch, pred_x, noise_logvar).sum(-1).sum(-1)
+                samp_trajs, pred_x, noise_logvar).sum(-1).sum(-1)
             pz0_mean = pz0_logvar = torch.zeros(z0.size()).to(device)
             analytic_kl = normal_kl(qz0_mean, qz0_logvar,
                                     pz0_mean, pz0_logvar).sum(-1)
@@ -219,7 +228,7 @@ if __name__ == '__main__':
         torch.cuda.empty_cache()
 
     if args.visualize:
-        fig_name = f'./vis-{args.niters}-{args.lr}-{anneal_label}-{args.batch_size}.png'
+        fig_name = f'./vis-{args.niters}-{args.lr}-{anneal_label}.png'
         visualize(
             func, rec, dec,
             orig_trajs, samp_trajs, samp_ts,

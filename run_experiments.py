@@ -39,12 +39,11 @@ def parse_args():
 if __name__ == '__main__':
     args = parse_args()
 
-    NITERS_LIST    = [10000, 20000]
-    KL_ANNEAL_LIST = [True, False]
-    LR_LIST        = [0.01, 0.005, 0.001]
-    BATCH_SIZE     = [64, 128, 256] 
+    NITERS_LIST    = [10000]
+    KL_ANNEAL_LIST = [True]
+    LR_LIST        = [0.01, 0.005] 
 
-    total = len(NITERS_LIST) * len(KL_ANNEAL_LIST) * len(LR_LIST) * len(BATCH_SIZE)
+    total = len(NITERS_LIST) * len(KL_ANNEAL_LIST) * len(LR_LIST)
     count = 0
 
     print(f"Experiments dir : {EXPERIMENTS_DIR}")
@@ -53,46 +52,44 @@ if __name__ == '__main__':
     for niters in NITERS_LIST:
         for kl_anneal in KL_ANNEAL_LIST:
             for lr in LR_LIST:
-                for batch_size in BATCH_SIZE:
-                    count += 1
-                    label = "kl_anneal" if kl_anneal else "no_kl_anneal"
+                count += 1
+                label = "kl_anneal" if kl_anneal else "no_kl_anneal"
 
-                    print("=" * 60)
-                    print(f"  Run {count}/{total}: niters={niters}  lr={lr}  {label}  batch_size={batch_size}")
-                    print("=" * 60)
+                print("=" * 60)
+                print(f"  Run {count}/{total}: niters={niters}  lr={lr}  {label}")
+                print("=" * 60)
 
-                    cmd = [
-                        sys.executable,
-                        #PATH TO SCRIPT CHANGE FOR RELEVANT EXPERIMENT
-                        str(EXPERIMENTS_DIR / "anneal_experiment.py"),
-                        "--niters",    str(niters),
-                        "--lr",        str(lr),
-                        "--seed",      str(args.seed),
-                        "--kl_anneal", "True" if kl_anneal else "False",
-                        "--visualize", args.visualize,
-                        "--batch_size", str(batch_size)
-                    ]
+                cmd = [
+                    sys.executable,
+                    #PATH TO SCRIPT CHANGE FOR RELEVANT EXPERIMENT
+                    str(EXPERIMENTS_DIR / "anneal_experiment.py"),
+                    "--niters",    str(niters),
+                    "--lr",        str(lr),
+                    "--seed",      str(args.seed),
+                    "--kl_anneal", "True" if kl_anneal else "False",
+                    "--visualize", args.visualize,
+                ]
 
-                    # cwd=EXPERIMENTS_DIR so relative file I/O (logs, figs) land there.
-                    # PYTHONPATH explicitly adds it to the import search path —
-                    # cwd alone is not guaranteed to be on sys.path on Windows.
-                    env = os.environ.copy()
+                # cwd=EXPERIMENTS_DIR so relative file I/O (logs, figs) land there.
+                # PYTHONPATH explicitly adds it to the import search path —
+                # cwd alone is not guaranteed to be on sys.path on Windows.
+                env = os.environ.copy()
 
-                    # Add project root so "models" can be imported
-                    env["PYTHONPATH"] = (
-                        str(ROOT_DIR) + os.pathsep + env.get("PYTHONPATH", "")
-                    )
+                # Add project root so "models" can be imported
+                env["PYTHONPATH"] = (
+                    str(ROOT_DIR) + os.pathsep + env.get("PYTHONPATH", "")
+                )
 
-                    result = subprocess.run(
-                        cmd,
-                        cwd=EXPERIMENTS_DIR,
-                        env=env
-                    )
+                result = subprocess.run(
+                    cmd,
+                    cwd=EXPERIMENTS_DIR,
+                    env=env
+                )
 
-                    if result.returncode != 0:
-                        print(f"\nRun {count}/{total} failed (exit code {result.returncode}). Stopping.")
-                        sys.exit(result.returncode)
+                if result.returncode != 0:
+                    print(f"\nRun {count}/{total} failed (exit code {result.returncode}). Stopping.")
+                    sys.exit(result.returncode)
 
-                    print()
+                print()
 
     print(f"All {total} experiments complete.")
