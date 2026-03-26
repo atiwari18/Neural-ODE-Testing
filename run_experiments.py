@@ -12,13 +12,13 @@ from pathlib import Path
 # Root of the repo — where this script lives
 ROOT_DIR = Path(__file__).resolve().parent
 
-# Experiments/ subfolder — where anneal_experiment.py and models/ live.
+# Experiments/ subfolder — where anneal_experiment_alternate.py and models/ live.
 # cwd must be set here so that `from models.latent_ode import ...` resolves.
 EXPERIMENTS_DIR = ROOT_DIR / "Experiments"
 
 # Sanity check: fail fast with a clear message if the layout looks wrong
-if not (EXPERIMENTS_DIR / "anneal_experiment.py").exists():
-    print(f"ERROR: Could not find anneal_experiment.py at {EXPERIMENTS_DIR}")
+if not (EXPERIMENTS_DIR / "anneal_experiment_alternate.py").exists():
+    print(f"ERROR: Could not find anneal_experiment_alternate.py at {EXPERIMENTS_DIR}")
     print( "       Make sure run_experiments.py is in the project root and")
     print( "       Experiments/anneal_experiment.py exists.")
     sys.exit(1)
@@ -39,8 +39,8 @@ def parse_args():
 if __name__ == '__main__':
     args = parse_args()
 
-    NITERS_LIST    = [10000]
-    KL_ANNEAL_LIST = [True]
+    NITERS_LIST    = [10000, 20000]
+    KL_ANNEAL_LIST = [True, False]
     LR_LIST        = [0.01, 0.005] 
 
     total = len(NITERS_LIST) * len(KL_ANNEAL_LIST) * len(LR_LIST)
@@ -62,7 +62,7 @@ if __name__ == '__main__':
                 cmd = [
                     sys.executable,
                     #PATH TO SCRIPT CHANGE FOR RELEVANT EXPERIMENT
-                    str(EXPERIMENTS_DIR / "anneal_experiment.py"),
+                    str(EXPERIMENTS_DIR / "anneal_experiment_alternate.py"),
                     "--niters",    str(niters),
                     "--lr",        str(lr),
                     "--seed",      str(args.seed),

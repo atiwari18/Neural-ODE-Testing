@@ -156,16 +156,23 @@ if __name__ == '__main__':
             epsilon = torch.randn(qz0_mean.size()).to(device)
             z0 = epsilon * torch.exp(.5 * qz0_logvar) + qz0_mean
 
-            #forward in time and solve ode for reconstructions
-            #now we have a per spiral odeint since each slice has a different start and time.
-            preds = []
-            for i in range(nspiral):
-                ts_i = samp_ts[i]
-                z0_i = z0[i].unsqueeze(0)
-                pred_z_i = odeint(func, z0_i, ts_i)
-                preds.append(pred_z_i.permute(1, 0, 2))
-            
-            pred_z = torch.cat(preds, dim=0)
+            #1. Build the union time grid (at most ntotal=1000 unique points)
+            union_ts, _ = torch.unique(samp_ts.reshape(-1), sorted=True, return_inverse=True)
+
+            # 2. Single batched odeint over the union grid
+            #    pred_z_union shape: (T_union, nspiral, latent_dim)
+            pred_z_union = odeint(func, z0, union_ts)
+
+            # 3. For each spiral, gather only its own time indices from the union result
+            #    searchsorted finds where each spiral's timestamps sit in union_ts
+            ts_idx = torch.searchsorted(union_ts, samp_ts)  # shape: (nspiral, nsample)
+
+            # 4. Index out: for spiral i, pick rows ts_idx[i] from pred_z_union[:, i, :]
+            #    ts_idx[..., None] expands to (nspiral, nsample, 1) to gather over latent_dim
+            ts_idx_exp = ts_idx.unsqueeze(-1).expand(-1, -1, latent_dim)  # (nspiral, nsample, latent_dim)
+            pred_z_union_t = pred_z_union.permute(1, 0, 2)               # (nspiral, T_union, latent_dim)
+            pred_z = torch.gather(pred_z_union_t, 1, ts_idx_exp)     # (nspiral, nsample, latent_dim)
+
             pred_x = dec(pred_z)
 
             # compute loss
