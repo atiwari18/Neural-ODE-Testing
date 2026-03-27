@@ -63,7 +63,7 @@ def visualize(func, rec, dec, orig_trajs, samp_trajs, samp_ts, orig_ts_np, laten
             ).float().to(device)
 
             ts_neg = torch.from_numpy(
-                np.linspace(0., t0_i, num=2000)
+                np.linspace(t0_i, 0, num=2000)
             ).float().to(device)
 
             xs_pos = dec(odeint(func, z0, ts_pos)).cpu().numpy()
@@ -104,7 +104,7 @@ if __name__ == '__main__':
     nhidden = 40
     rnn_nhidden = 45
     obs_dim = 2
-    nspiral = 100
+    nspiral = 1000
     start = 0.
     stop = 6 * np.pi
     noise_std = 0.2
