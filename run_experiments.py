@@ -39,9 +39,9 @@ def parse_args():
 if __name__ == '__main__':
     args = parse_args()
 
-    NITERS_LIST    = [10000, 20000]
-    KL_ANNEAL_LIST = [False]
-    LR_LIST        = [0.005] 
+    NITERS_LIST    = [1000, 3000, 5000, 10000]
+    KL_ANNEAL_LIST = [True, False]
+    LR_LIST        = [0.005, 0.001] 
 
     total = len(NITERS_LIST) * len(KL_ANNEAL_LIST) * len(LR_LIST)
     count = 0
