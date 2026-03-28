@@ -83,7 +83,7 @@ class ODEFunc(nn.Module):
 
         #Small Init keep early training stable
         for m in self.net.modules():
-            if self.instance(m, nn.Linear):
+            if isinstance(m, nn.Linear):
                 nn.init.normal_(m.weight, std=0.01)
                 nn.init.zeros_(m.bias)
 
