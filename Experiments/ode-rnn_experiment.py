@@ -38,7 +38,7 @@ def train(
     device="cuda"
 ):
     print("=== Generating spiral data ===")
-    orig_trajs, samp_trajs, orig_ts, samp_ts = generate_spiral2d(
+    orig_trajs, samp_trajs, orig_ts, samp_ts, samp_start_idxs = generate_spiral2d(
         nspiral=nspiral, ntotal=ntotal, nsample=nsample, start=start, stop=stop,
         noise_std=0.3, savefig=True,
     )
@@ -121,33 +121,25 @@ def train(
             data_w_mask = torch.cat([single_data, mask], dim=-1)
  
             mu_z0, sigma_z0 = model.encoder(data_w_mask, samp_ts_t)
-            eps = torch.randn_like(mu_z0)
-            z0 = mu_z0 + eps * sigma_z0                     # (1, 1, latent_dim)
-            z0 = z0.squeeze(0).squeeze(0)                   # (latent_dim,)
+            z0 = mu_z0.squeeze(0).squeeze(0)  # use mean for stable plots
+            
+            start_idx = int(samp_start_idxs[spiral_idx])
+            end_idx = start_idx + nsample - 1
  
-            t0_i = samp_ts_t[0].item()
+            dt = float(orig_ts[1] - orig_ts[0])
+            future_horizon = float(orig_ts[-1] - orig_ts[end_idx])
+            past_horizon = float(orig_ts[start_idx] - orig_ts[0])
  
-            # odeint(func, y0, t) returns shape (len(t), *y0.shape).
-            # y0 = z0.unsqueeze(0) has shape (1, latent_dim), so odeint returns
-            # (n_steps, 1, latent_dim).  We need to squeeze dim 1 (the batch dim)
-            # before decoding, giving (n_steps, latent_dim) → decoder → (n_steps, 2).
+            # Forward: only from start of observed window to the actual end of the true curve
+            ts_pos = torch.linspace(0.0, future_horizon, 1000, device=device)
+            sol_pos = odeint(model.ode_func, z0.unsqueeze(0), ts_pos)
+            xs_pos = model.decoder(sol_pos.squeeze(1)).cpu().numpy()
  
-            # 2. Forward solve: from the first observed time t0 to the end of the
-            #    full original trajectory  — this is interpolation/reconstruction,
-            #    matching the paper's Figure 2 (right side: ODE decode forward in time).
-            ts_pos = torch.linspace(t0_i, orig_ts_t[-1].item(), 2000, device=device)
-            sol_pos = odeint(model.ode_func, z0.unsqueeze(0), ts_pos)  # (n_steps, 1, latent_dim)
-            xs_pos = model.decoder(sol_pos.squeeze(1)).cpu().numpy()   # (n_steps, 2)
- 
-            # 3. Backward solve: strictly *decreasing* t — torchdiffeq supports this
-            #    natively (no manual flip needed).  This shows what the latent ODE
-            #    predicts before the first observation, matching the paper's note that
-            #    the model can answer non-standard queries such as predicting backwards
-            #    in time (Section 3.2).  Guard against t0_i ≈ 0.
-            if t0_i > 1e-6:
-                ts_neg = torch.linspace(t0_i, 0.0, 2000, device=device)   # strictly decreasing
-                sol_neg = odeint(model.ode_func, z0.unsqueeze(0), ts_neg)  # (n_steps, 1, latent_dim)
-                xs_neg = model.decoder(sol_neg.squeeze(1)).cpu().numpy()   # (n_steps, 2)
+            # Backward: from start of observed window into the past
+            if past_horizon > 1e-8:
+                ts_neg = torch.linspace(0.0, -past_horizon, 1000, device=device)
+                sol_neg = odeint(model.ode_func, z0.unsqueeze(0), ts_neg)
+                xs_neg = model.decoder(sol_neg.squeeze(1)).cpu().numpy()
             else:
                 xs_neg = None
  

@@ -47,11 +47,13 @@ def generate_spiral2d(nspiral=1000,
     # sample starting timestamps
     orig_trajs = []
     samp_trajs = []
+    samp_start_idxs = []
     for _ in range(nspiral):
         # don't sample t0 very near the start or the end
         t0_idx = npr.multinomial(
             1, [1. / (ntotal - 2. * nsample)] * (ntotal - int(2 * nsample)))
         t0_idx = np.argmax(t0_idx) + nsample
+        samp_start_idxs.append(t0_idx)
 
         cc = bool(npr.rand() > .5)  # uniformly select rotation
         orig_traj = orig_traj_cc if cc else orig_traj_cw
@@ -65,8 +67,9 @@ def generate_spiral2d(nspiral=1000,
     # trajectories only for ease of indexing
     orig_trajs = np.stack(orig_trajs, axis=0)
     samp_trajs = np.stack(samp_trajs, axis=0)
+    samp_start_idxs = np.array(samp_start_idxs, dtype=np.float64)
 
-    return orig_trajs, samp_trajs, orig_ts, samp_ts
+    return orig_trajs, samp_trajs, orig_ts, samp_ts, samp_start_idxs
 
 #ODE Function
 class ODEFunc(nn.Module):

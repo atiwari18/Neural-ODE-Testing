@@ -28,13 +28,13 @@ from torch.distributions.normal import Normal
 from lib.latent_ode import LatentODE
 
 from lib.likelihood_eval import masked_gaussian_log_density
-try:
-	import umap
-except:
-	print("Couldn't import umap")
+# try:
+# 	import umap
+# except:
+# 	print("Couldn't import umap")
 
-from generate_timeseries import Periodic_1d
-from person_activity import PersonActivity
+# from generate_timeseries import Periodic_1d
+# from person_activity import PersonActivity
 
 from lib.utils import compute_loss_all_batches
 

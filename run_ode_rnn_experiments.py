@@ -33,10 +33,10 @@ if __name__ == '__main__':
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
     #HYPERPARAMETER GRID
-    NITERS_LIST     = [1000, 3000, 5000]
+    NITERS_LIST     = [5000]
     LR_LIST         = [0.005]
-    LATENT_DIM_LIST = [4, 6]
-    KL_COEF_LIST    = [0.5, 1.0]
+    LATENT_DIM_LIST = [6]
+    KL_COEF_LIST    = [1.0]
     total = (len(NITERS_LIST) * len(LR_LIST)
              * len(LATENT_DIM_LIST) * len(KL_COEF_LIST))
     count = 0
@@ -51,7 +51,7 @@ if __name__ == '__main__':
                 for kl_coef in KL_COEF_LIST:
                     count += 1
                     label = (f"niters-{niters}_lr-{lr}_latent-{latent_dim}"
-                             f"_kl-{kl_coef}")
+                             f"_kl-{kl_coef}-backwards")
                     run_dir = RESULTS_DIR / label
                     run_dir.mkdir(parents=True, exist_ok=True)
 
