@@ -1,0 +1,141 @@
+import numpy as np
+import numpy.random as npr
+import torch
+import matplotlib.pyplot as plt
+
+def plot_spiral_dataset_example(full_data, observed_data, full_tp, observed_tp, idx=0, savepath=None):
+    full_traj = full_data[idx].detach().cpu().numpy()
+    obs_traj = observed_data[idx].detach().cpu().numpy()
+
+    plt.figure(figsize=(6, 6))
+    plt.plot(full_traj[:, 0], full_traj[:, 1], color="lightgray", linewidth=2, label="target trajectory")
+    plt.plot(obs_traj[:, 0], obs_traj[:, 1], "bo-", markersize=3, linewidth=1, label="observed prefix")
+    plt.scatter(full_traj[0, 0], full_traj[0, 1], color="green", s=50, label="start")
+    plt.scatter(full_traj[-1, 0], full_traj[-1, 1], color="red", s=50, label="end")
+    plt.axis("equal")
+    plt.legend()
+    plt.title("Spiral dataset example")
+
+    if savepath is not None:
+        plt.savefig(savepath, dpi=200, bbox_inches="tight")
+    else:
+        plt.show()
+
+def _make_base_spirals(ntotal=1000, start=0.0, stop=6 * np.pi, a=0.0, b=0.3):
+    """
+    Build two full reference spirals on a common global timeline:
+    - clockwise
+    - counter-clockwise
+
+    Returns:
+        traj_cw: [ntotal, 2]
+        traj_ccw: [ntotal, 2]
+        ts: [ntotal]
+    """
+    ts = np.linspace(start, stop, num=ntotal)
+
+    # Clockwise spiral
+    zs_cw = stop + 1.0 - ts
+    rs_cw = a + b * 50.0 / zs_cw
+    xs_cw = rs_cw * np.cos(zs_cw) - 5.0
+    ys_cw = rs_cw * np.sin(zs_cw)
+    traj_cw = np.stack((xs_cw, ys_cw), axis=1)
+
+    # Counter-clockwise spiral
+    zs_cc = ts
+    rs_cc = a + b * zs_cc
+    xs_cc = rs_cc * np.cos(zs_cc) + 5.0
+    ys_cc = rs_cc * np.sin(zs_cc)
+    traj_cc = np.stack((xs_cc, ys_cc), axis=1)
+
+    return traj_cw, traj_cc, ts
+
+
+def generate_spiral_extrap_dataset(
+    nspiral=1000,
+    ntotal=1000,
+    obs_len=40,
+    pred_len=200,
+    start=0.0,
+    stop=6 * np.pi,
+    noise_std=0.1,
+    a=0.0,
+    b=0.3,
+    savefig=False,
+    device=torch.device("cpu"),
+):
+    """
+    Create a dataset for long-horizon extrapolation.
+
+    Each sample is built by:
+    1. choosing one of the two spiral families
+    2. choosing a random start index t0_idx
+    3. extracting a window of length pred_len
+    4. defining local timestamps for that window
+    5. adding noise only to the observed prefix [0:obs_len]
+
+    Returns:
+        full_windows: [nspiral, pred_len, 2]
+            The target trajectories the model should reconstruct/predict.
+        observed_windows: [nspiral, obs_len, 2]
+            The prefix actually shown to the model.
+        full_time_steps: [pred_len]
+            Local time for the full prediction horizon.
+        observed_time_steps: [obs_len]
+            Local time for the observed prefix.
+    """
+    if obs_len >= pred_len:
+        raise ValueError("obs_len must be smaller than pred_len for extrapolation.")
+
+    if pred_len >= ntotal:
+        raise ValueError("pred_len must be smaller than ntotal.")
+
+    traj_cw, traj_cc, global_ts = _make_base_spirals(
+        ntotal=ntotal, start=start, stop=stop, a=a, b=b
+    )
+
+    if savefig:
+        plt.figure()
+        plt.plot(traj_cw[:, 0], traj_cw[:, 1], label="clockwise")
+        plt.plot(traj_cc[:, 0], traj_cc[:, 1], label="counter-clockwise")
+        plt.legend()
+        plt.savefig("./ground_truth_spirals.png", dpi=300)
+
+    full_windows = []
+    observed_windows = []
+
+    max_start = ntotal - pred_len
+    if max_start <= 0:
+        raise ValueError("ntotal must be larger than pred_len.")
+
+    for _ in range(nspiral):
+        # Randomly choose which spiral family this sample comes from.
+        use_cc = bool(npr.rand() > 0.5)
+        source_traj = traj_cc if use_cc else traj_cw
+
+        # Choose a random valid start so we can still take pred_len points.
+        t0_idx = npr.randint(0, max_start)
+
+        # Extract the long target window.
+        full_window = source_traj[t0_idx : t0_idx + pred_len].copy()
+
+        # The observed part is just the prefix of that window.
+        observed_window = full_window[:obs_len].copy()
+
+        # Add observation noise only to the observed part.
+        observed_window += npr.randn(*observed_window.shape) * noise_std
+
+        full_windows.append(full_window)
+        observed_windows.append(observed_window)
+
+    full_windows = torch.tensor(np.stack(full_windows, axis=0), dtype=torch.float32, device=device)
+    observed_windows = torch.tensor(np.stack(observed_windows, axis=0), dtype=torch.float32, device=device)
+
+    # Use local time relative to the start of the sampled window.
+    local_ts = global_ts[:pred_len] - global_ts[0]
+    observed_ts = local_ts[:obs_len]
+
+    full_time_steps = torch.tensor(local_ts, dtype=torch.float32, device=device)
+    observed_time_steps = torch.tensor(observed_ts, dtype=torch.float32, device=device)
+
+    return full_windows, observed_windows, full_time_steps, observed_time_steps

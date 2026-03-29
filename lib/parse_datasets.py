@@ -22,6 +22,8 @@ from person_activity import PersonActivity, variable_time_collate_fn_activity
 from sklearn import model_selection
 import random
 
+from generate_spirals import generate_spiral_extrap_dataset
+
 #####################################################################################################
 def parse_datasets(args, device):
 	
@@ -185,6 +187,89 @@ def parse_datasets(args, device):
 					"n_test_batches": len(test_dataloader),
 					"classif_per_tp": True, #optional
 					"n_labels": labels.size(-1)}
+
+		return data_objects
+	
+		##################################################################
+	# Spiral extrapolation dataset
+
+	if dataset_name == "spiral":
+		obs_len = args.timepoints
+		pred_len = args.timepoints * 4
+
+		full_data, observed_data, full_tp, observed_tp = generate_spiral_extrap_dataset(
+			nspiral=args.n,
+			ntotal=max(pred_len + 50, 500),
+			obs_len=obs_len,
+			pred_len=pred_len,
+			start=0.0,
+			stop=args.max_t,
+			noise_std=args.noise_weight,
+			a=0.0,
+			b=0.3,
+			savefig=False,
+			device=device,
+		)
+
+		n_samples = full_data.size(0)
+		input_dim = full_data.size(-1)
+
+		# Split train/test at the sample level
+		train_full, test_full = utils.split_train_test(full_data, train_fraq=0.8)
+		train_obs, test_obs = utils.split_train_test(observed_data, train_fraq=0.8)
+
+		class SpiralDataset(torch.utils.data.Dataset):
+			def __init__(self, observed, full):
+				self.observed = observed
+				self.full = full
+
+			def __len__(self):
+				return self.observed.size(0)
+
+			def __getitem__(self, idx):
+				return self.observed[idx], self.full[idx]
+
+		def spiral_collate_fn(batch, data_type="train"):
+			batch_obs = torch.stack([item[0] for item in batch], dim=0)
+			batch_full = torch.stack([item[1] for item in batch], dim=0)
+
+			return {
+				"observed_data": batch_obs,
+				"observed_tp": observed_tp,
+				"observed_mask": torch.ones_like(batch_obs).to(device),
+				"data_to_predict": batch_full,
+				"tp_to_predict": full_tp,
+				"mask_predicted_data": torch.ones_like(batch_full).to(device),
+				"labels": None,
+				"mode": "extrap",
+			}
+
+		train_dataset = SpiralDataset(train_obs, train_full)
+		test_dataset = SpiralDataset(test_obs, test_full)
+
+		batch_size = min(args.batch_size, args.n)
+
+		train_dataloader = DataLoader(
+			train_dataset,
+			batch_size=batch_size,
+			shuffle=False,
+			collate_fn=lambda batch: spiral_collate_fn(batch, data_type="train"),
+		)
+
+		test_dataloader = DataLoader(
+			test_dataset,
+			batch_size=len(test_dataset),
+			shuffle=False,
+			collate_fn=lambda batch: spiral_collate_fn(batch, data_type="test"),
+		)
+
+		data_objects = {
+			"train_dataloader": utils.inf_generator(train_dataloader),
+			"test_dataloader": utils.inf_generator(test_dataloader),
+			"input_dim": input_dim,
+			"n_train_batches": len(train_dataloader),
+			"n_test_batches": len(test_dataloader),
+		}
 
 		return data_objects
 
