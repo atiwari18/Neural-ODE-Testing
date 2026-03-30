@@ -150,7 +150,7 @@ def train(
             ax.plot(orig_traj[:, 0], orig_traj[:, 1], 'g', label='true trajectory', linewidth=1.5)
             ax.plot(xs_pos[:, 0], xs_pos[:, 1], 'r', label='learned (t>0)', linewidth=1.2)
             if xs_neg is not None:
-                ax.plot(xs_neg[:, 0], xs_neg[:, 1], 'c', label='learned (t<0)', linewidth=1.2)
+                ax.plot(xs_neg[::-1, 0], xs_neg[::-1, 1], 'c', label='learned (t<0)', linewidth=1.2)
             ax.scatter(samp_traj[:, 0], samp_traj[:, 1], label='sampled data', s=3, alpha=0.6)
  
             ax.set_title(f'Spiral {spiral_idx}')
