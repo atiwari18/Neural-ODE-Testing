@@ -63,7 +63,8 @@ class GRU_unit(nn.Module):
 		concat = torch.cat([y_mean * reset_gate, y_std * reset_gate, x], -1)
 		
 		new_state, new_state_std = utils.split_last_dim(self.new_state_net(concat))
-		new_state_std = new_state_std.abs()
+		#new_state_std = new_state_std.abs()
+		new_state_std = torch.nn.functional.softplus(new_state_std) + 1e-8
 
 		new_y = (1-update_gate) * new_state + update_gate * y_mean
 		new_y_std = (1-update_gate) * new_state_std + update_gate * y_std
@@ -91,7 +92,8 @@ class GRU_unit(nn.Module):
 				print(prev_new_y)
 				exit()
 
-		new_y_std = new_y_std.abs()
+		#new_y_std = new_y_std.abs()
+		new_y_std = torch.nn.functional.softplus(new_y_std)
 		return new_y, new_y_std
 
 
@@ -156,7 +158,8 @@ class Encoder_z0_RNN(nn.Module):
 		self.extra_info ={"rnn_outputs": outputs, "time_points": time_steps}
 
 		mean, std = utils.split_last_dim(self.hiddens_to_z0(last_output))
-		std = std.abs()
+		#std = std.abs()
+		std = torch.nn.functional.softplus(std) + 1e-8
 
 		assert(not torch.isnan(mean).any())
 		assert(not torch.isnan(std).any())
@@ -229,7 +232,9 @@ class Encoder_z0_ODE_RNN(nn.Module):
 		std_z0 = last_yi_std.reshape(1, n_traj, self.latent_dim)
 
 		mean_z0, std_z0 = utils.split_last_dim( self.transform_z0( torch.cat((means_z0, std_z0), -1)))
-		std_z0 = std_z0.abs()
+		#std_z0 = std_z0.abs()
+		std_z0 = torch.nn.functional.softplus(std_z0) + 1e-8
+
 		if save_info:
 			self.extra_info = extra_info
 

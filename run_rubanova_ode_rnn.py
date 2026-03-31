@@ -57,10 +57,10 @@ if __name__ == "__main__":
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
     # Hyperparameter grid
-    NITERS_LIST = [1, 2]
-    LR_LIST = [1e-2]
+    NITERS_LIST = [250, 500]
+    LR_LIST = [1e-2, 5e-3, 1e-3]
     LATENT_DIM_LIST = [6]
-    TIMEPOINTS_LIST = [40]
+    TIMEPOINTS_LIST = [50]
     NOISE_WEIGHT_LIST = [0.1]
 
     grid = list(itertools.product(

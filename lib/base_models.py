@@ -260,6 +260,7 @@ class VAE_Baseline(nn.Module):
 
 		#print("get_reconstruction done -- computing likelihood")
 		fp_mu, fp_std, fp_enc = info["first_point"]
+		fp_std = fp_std.clamp_min(1e-8)
 		fp_std = fp_std.abs()
 		fp_distr = Normal(fp_mu, fp_std)
 

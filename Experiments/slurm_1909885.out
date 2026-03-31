@@ -1,0 +1,44 @@
+Sampling dataset of 1000 training examples
+Saved spiral extrapolation plot to /home/atiwari/Annealing_Experiment/ODE-RNN_Results/niters-100_lr-0.01_latents-6_tp-50_noise-0.1/spiral_extrap_exp99443_epoch0100.png
+Sampling dataset of 1000 training examples
+Saved spiral extrapolation plot to /home/atiwari/Annealing_Experiment/ODE-RNN_Results/niters-100_lr-0.005_latents-6_tp-50_noise-0.1/spiral_extrap_exp91012_epoch0100.png
+Sampling dataset of 1000 training examples
+Saved spiral extrapolation plot to /home/atiwari/Annealing_Experiment/ODE-RNN_Results/niters-100_lr-0.001_latents-6_tp-50_noise-0.1/spiral_extrap_exp84655_epoch0100.png
+Sampling dataset of 1000 training examples
+Run script   : /home/atiwari/Annealing_Experiment/Experiments/run_models.py
+Results dir  : /home/atiwari/Annealing_Experiment/ODE-RNN_Results
+Total runs   : 9
+
+================================================================================
+Run 1/9
+label      : niters-100_lr-0.01_latents-6_tp-50_noise-0.1
+output dir : /home/atiwari/Annealing_Experiment/ODE-RNN_Results/niters-100_lr-0.01_latents-6_tp-50_noise-0.1
+command    :
+  /home/atiwari/Annealing_Experiment/.venv/bin/python3 /home/atiwari/Annealing_Experiment/Experiments/run_models.py --dataset spiral --latent-ode --spiral -n 1000 -b 100 --niters 100 --lr 0.01 --timepoints 50 --max-t 18.85 --noise-weight 0.1 --latents 6 --save /home/atiwari/Annealing_Experiment/ODE-RNN_Results/niters-100_lr-0.01_latents-6_tp-50_noise-0.1
+================================================================================
+
+================================================================================
+Run 2/9
+label      : niters-100_lr-0.005_latents-6_tp-50_noise-0.1
+output dir : /home/atiwari/Annealing_Experiment/ODE-RNN_Results/niters-100_lr-0.005_latents-6_tp-50_noise-0.1
+command    :
+  /home/atiwari/Annealing_Experiment/.venv/bin/python3 /home/atiwari/Annealing_Experiment/Experiments/run_models.py --dataset spiral --latent-ode --spiral -n 1000 -b 100 --niters 100 --lr 0.005 --timepoints 50 --max-t 18.85 --noise-weight 0.1 --latents 6 --save /home/atiwari/Annealing_Experiment/ODE-RNN_Results/niters-100_lr-0.005_latents-6_tp-50_noise-0.1
+================================================================================
+
+================================================================================
+Run 3/9
+label      : niters-100_lr-0.001_latents-6_tp-50_noise-0.1
+output dir : /home/atiwari/Annealing_Experiment/ODE-RNN_Results/niters-100_lr-0.001_latents-6_tp-50_noise-0.1
+command    :
+  /home/atiwari/Annealing_Experiment/.venv/bin/python3 /home/atiwari/Annealing_Experiment/Experiments/run_models.py --dataset spiral --latent-ode --spiral -n 1000 -b 100 --niters 100 --lr 0.001 --timepoints 50 --max-t 18.85 --noise-weight 0.1 --latents 6 --save /home/atiwari/Annealing_Experiment/ODE-RNN_Results/niters-100_lr-0.001_latents-6_tp-50_noise-0.1
+================================================================================
+
+================================================================================
+Run 4/9
+label      : niters-250_lr-0.01_latents-6_tp-50_noise-0.1
+output dir : /home/atiwari/Annealing_Experiment/ODE-RNN_Results/niters-250_lr-0.01_latents-6_tp-50_noise-0.1
+command    :
+  /home/atiwari/Annealing_Experiment/.venv/bin/python3 /home/atiwari/Annealing_Experiment/Experiments/run_models.py --dataset spiral --latent-ode --spiral -n 1000 -b 100 --niters 250 --lr 0.01 --timepoints 50 --max-t 18.85 --noise-weight 0.1 --latents 6 --save /home/atiwari/Annealing_Experiment/ODE-RNN_Results/niters-250_lr-0.01_latents-6_tp-50_noise-0.1
+================================================================================
+
+Run failed with exit code 1. Stopping.
