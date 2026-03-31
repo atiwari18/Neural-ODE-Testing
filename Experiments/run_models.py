@@ -185,7 +185,7 @@ if __name__ == '__main__':
 		input_command = input_command[:ind] + input_command[(ind+2):]
 	input_command = " ".join(input_command)
 
-	utils.makedirs("results/")
+	#utils.makedirs("results/") 
 
 	##################################################################
 	data_obj = parse_datasets(args, device)
@@ -308,9 +308,14 @@ if __name__ == '__main__':
 	##################################################################
 	# Training
 
-	log_path = "ode-rnn-training-logs/" + file_name + "_" + str(experimentID) + ".log"
-	if not os.path.exists("ode-rnn-training-logs/"):
-		utils.makedirs("ode-rnn-training-logs/")
+	# log_path = "ode-rnn-training-logs/" + file_name + "_" + str(experimentID) + ".log"
+	# if not os.path.exists("ode-rnn-training-logs/"):
+	# 	utils.makedirs("ode-rnn-training-logs/")
+
+	log_dir = os.path.join(args.save, "logs")
+	utils.makedirs(log_dir)
+	log_path = os.path.join(log_dir, file_name + "_" + str(experimentID) + ".log")
+
 	logger = utils.get_logger(logpath=log_path, filepath=os.path.abspath(__file__))
 	logger.info(input_command)
 
@@ -404,6 +409,7 @@ if __name__ == '__main__':
 					test_dict, 
 					model,
 					epoch=args.niters, 
-					experimentID=experimentID
+					experimentID=experimentID, 
+					save_dir=os.path.join(args.save)
 				)
 
