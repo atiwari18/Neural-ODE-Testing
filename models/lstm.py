@@ -177,3 +177,115 @@ def plot_lstm_sine_extrapolation(t_train, state_train, t_all, lstm_all, true_fun
         plt.savefig(os.path.join(results_dir, file_name), dpi=150, bbox_inches='tight')
         plt.close()
         print(f"Plot saved to: {os.path.join(results_dir, file_name)}")
+
+#==============================================================================================================
+#==============================================================================================================
+
+class Seq2SeqLSTM(nn.Module):
+    def __init__(self, input_dim=2, hidden_dim=25, num_layers=1, dropout=0.0):
+        super().__init__()
+
+        self.encoder = nn.LSTM(
+            input_size=input_dim, 
+            hidden_size = hidden_dim, 
+            num_layers = num_layers, 
+            batch_first = True, 
+            dropout=dropout if num_layers > 1 else 0.0,
+        )
+
+        self.decoder = nn.LSTM(
+            input_size=input_dim, 
+            hidden_size = hidden_dim, 
+            num_layers = num_layers, 
+            batch_first = True, 
+            dropout=dropout if num_layers > 1 else 0.0,
+        )
+
+        self.output_layer = nn.Linear(hidden_dim, input_dim)
+
+    def forward(self, observed, future_len, future_truth=None, teacher_forcing_ratio=0.5):
+        batch_size = observed.size(0)
+        device = observed.device
+
+        _, (hidden, cell) = self.encoder(observed)
+
+        #start decoding from the last observed point
+        decoder_input = observed[:, -1:, :]
+        preds = []
+
+        for t in range(future_len):
+            decoder_out, (hidden, cell) = self.decoder(decoder_input, (hidden, cell))
+            step_pred = self.output_layer(decoder_out)
+            preds.append(step_pred)
+
+            if future_truth is not None and torch.rand(1).item() < teacher_forcing_ratio:
+                decoder_input = future_truth[:, t:t+1, :]
+            else:
+                decoder_input = step_pred
+
+        preds = torch.cat(preds, dim=1)
+        return preds
+
+def split_train_test(full_data, observed_data, train_frac=0.8):
+    n = full_data.size(0)
+    n_train = int(train_frac * n)
+
+    train_full = full_data[:n_train]
+    test_full = full_data[n_train:]
+
+    train_obs = observed_data[:n_train]
+    test_obs = observed_data[n_train:]
+
+    return train_full, test_full, train_obs, test_obs
+
+
+def plot_rollouts(model, test_loader, device, epoch, save_dir, n_plot=4):
+    os.makedirs(save_dir, exist_ok=True)
+    model.eval()
+
+    batch = next(iter(test_loader))
+    observed, future, full_traj = [x.to(device) for x in batch]
+
+    with torch.no_grad():
+        future_pred = model(observed, future_len=future.size(1), future_truth=None, teacher_forcing_ratio=0.0)
+
+    observed = observed.cpu().numpy()
+    future = future.cpu().numpy()
+    full_traj = full_traj.cpu().numpy()
+    future_pred = future_pred.cpu().numpy()
+
+    n_plot = min(n_plot, observed.shape[0])
+    fig, axes = plt.subplots(2, 2, figsize=(10, 10))
+    axes = axes.flatten()
+
+    for i in range(n_plot):
+        ax = axes[i]
+
+        obs = observed[i]
+        true_full = full_traj[i]
+        pred_full = np.concatenate([obs, future_pred[i]], axis=0)
+
+        ax.plot(true_full[:, 0], true_full[:, 1], "k--", linewidth=1.5, label="true full traj")
+        ax.plot(pred_full[:, 0], pred_full[:, 1], color="red", linewidth=2, label="predicted rollout")
+        ax.plot(obs[:, 0], obs[:, 1], "bo-", markersize=3, linewidth=1.5, label="observed prefix")
+
+        ax.scatter(obs[0, 0], obs[0, 1], color="green", s=40, label="start")
+        ax.scatter(obs[-1, 0], obs[-1, 1], color="orange", s=40, label="obs end")
+        ax.scatter(true_full[-1, 0], true_full[-1, 1], color="purple", s=40, label="target end")
+
+        ax.set_title(f"Trajectory {i}")
+        ax.axis("equal")
+
+    for j in range(n_plot, len(axes)):
+        axes[j].axis("off")
+
+    handles, labels = axes[0].get_legend_handles_labels()
+    fig.legend(handles, labels, loc="lower center", ncol=5, bbox_to_anchor=(0.5, 0.02))
+    fig.suptitle(f"LSTM Spiral Extrapolation Epoch {epoch:04d}", y=0.98)
+    plt.tight_layout(rect=[0, 0.06, 1, 0.95])
+
+    save_path = os.path.join(save_dir, f"lstm_spiral_epoch_{epoch:04d}.png")
+    plt.savefig(save_path, dpi=200, bbox_inches="tight")
+    plt.close(fig)
+
+    print(f"Saved plot to {save_path}")

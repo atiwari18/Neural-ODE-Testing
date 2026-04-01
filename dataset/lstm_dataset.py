@@ -1,4 +1,5 @@
 import torch
+from torch.utils.data import Dataset
 
 #Converts trajectories into input/target sequences
 def generate_lstm_dataset(trajectories, seq_len=20):
@@ -18,3 +19,18 @@ def generate_lstm_dataset(trajectories, seq_len=20):
     targets = torch.stack(targets, dim=0)
 
     return inputs, targets
+
+class SpiralSequenceDataset(Dataset):
+    def __init__(self, observed_data, full_data):
+        self.observed_data = observed_data
+        self.full_data = full_data
+
+    def __len__(self):
+        return self.observed_data.size(0)
+    
+    def __getitem__(self, idx):
+        obs = self.observed_data[idx]
+        full_traj = self.full_data[idx]
+        future = full_traj[obs.size(0):]
+
+        return obs, future, full_traj
