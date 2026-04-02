@@ -156,10 +156,10 @@ if __name__ == "__main__":
         if epoch % args.plot_every == 0 or epoch == 1 or epoch == args.epochs:
             plot_rollouts(
                 model=model,
-                test_loader=test_loader,
+                test_dataset=test_dataset,
                 device=device,
                 epoch=epoch,
                 save_dir=os.path.join(args.save_dir, "plots"),
-                n_plot=4,
+                plot_indices=[0, 1, 2, 3]
             )
 

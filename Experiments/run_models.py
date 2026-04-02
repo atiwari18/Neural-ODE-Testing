@@ -100,10 +100,12 @@ utils.makedirs(args.save)
 
 #Plotting Code for Spirals
 #TODO: Integrate with larger Visualize class in @plotting.py
-def plot_spiral_extrapolation(test_dict, model, epoch, experimentID, save_dir="ODE-RNN_Results/spiral_plots"):
+def plot_spiral_extrapolation(test_dict, model, epoch, experimentID, save_dir="ODE-RNN_Results/spiral_plots", plot_indices=None):
 	os.makedirs(save_dir, exist_ok=True)
-	n_plot = 4
 
+	if plot_indices is None:
+		plot_indices = [0, 1, 2, 3]
+	
 	model.eval()
 	with torch.no_grad():
 		pred_y, _ = model.get_reconstruction(
@@ -117,20 +119,23 @@ def plot_spiral_extrapolation(test_dict, model, epoch, experimentID, save_dir="O
 
 	#pred_t shape: [1, batch, n_tp, 2]
 	pred_t = pred_y[0].detach().cpu().numpy()
-
 	observed_data = test_dict["observed_data"].detach().cpu().numpy()
 	data_to_predict = test_dict["data_to_predict"].detach().cpu().numpy()
+
+	#
+	valid_indices = [idx for idx in plot_indices if idx < observed_data.shape[0]]
+	n_plot = len(valid_indices)
 
 	#n_plot = min(n_plot, observed_data.shape[0])
 	fig, axes = plt.subplots(2, 2, figsize=(10, 10))
 	axes = axes.flatten()
 
-	for i in range(n_plot):
-		ax = axes[i]
+	for panel_i, sample_i in enumerate(valid_indices):
+		ax = axes[panel_i]
 
-		obs = observed_data[i]          # [obs_len, 2]
-		true_traj = data_to_predict[i]  # [pred_len, 2]
-		pred_traj = pred_t[i]           # [pred_len, 2]
+		obs = observed_data[sample_i]          # [obs_len, 2]
+		true_traj = data_to_predict[sample_i]  # [pred_len, 2]
+		pred_traj = pred_t[sample_i]           # [pred_len, 2]
 
 		# True full trajectory
 		ax.plot(true_traj[:, 0], true_traj[:, 1], "k--", linewidth=1.5, label="true full traj")
@@ -139,13 +144,13 @@ def plot_spiral_extrapolation(test_dict, model, epoch, experimentID, save_dir="O
 		ax.plot(pred_traj[:, 0], pred_traj[:, 1], color="red", linewidth=2, label="predicted rollout")
 
 		# Observed prefix
-		ax.plot(obs[:, 0], obs[:, 1], "bo-", markersize=3, linewidth=1.5, label="observed prefix")
+		ax.scatter(obs[:, 0], obs[:, 1], color="blue", s=10, label="observed prefix")
 
 		# Start and end markers
 		ax.scatter(obs[0, 0], obs[0, 1], color="green", s=40, label="start")
 		ax.scatter(true_traj[-1, 0], true_traj[-1, 1], color="purple", s=40, label="target end")
 
-		ax.set_title(f"Trajectory {i}")
+		ax.set_title(f"Trajectory {sample_i}")
 		ax.axis("equal")
 
 	# Hide unused axes if fewer than 4

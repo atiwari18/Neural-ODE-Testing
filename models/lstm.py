@@ -239,12 +239,29 @@ def split_train_test(full_data, observed_data, train_frac=0.8):
     return train_full, test_full, train_obs, test_obs
 
 
-def plot_rollouts(model, test_loader, device, epoch, save_dir, n_plot=4):
+def plot_rollouts(model, test_dataset, device, epoch, save_dir, plot_indices=None):
     os.makedirs(save_dir, exist_ok=True)
     model.eval()
 
-    batch = next(iter(test_loader))
-    observed, future, full_traj = [x.to(device) for x in batch]
+    if plot_indices is None:
+        plot_indices = [0, 1, 2, 3]
+
+    valid_indices = [idx for idx in plot_indices if idx < len(test_dataset)]
+    n_plot = len(valid_indices)
+
+    observed_list = []
+    future_list = []
+    full_traj_list = []
+
+    for idx in valid_indices:
+        observed, future, full_traj = test_dataset[idx]
+        observed_list.append(observed)
+        future_list.append(future)
+        full_traj_list.append(full_traj)
+
+    observed = torch.stack(observed_list).to(device)
+    future = torch.stack(future_list).to(device)
+    full_traj = torch.stack(full_traj_list).to(device)
 
     with torch.no_grad():
         future_pred = model(observed, future_len=future.size(1), future_truth=None, teacher_forcing_ratio=0.0)
@@ -254,26 +271,25 @@ def plot_rollouts(model, test_loader, device, epoch, save_dir, n_plot=4):
     full_traj = full_traj.cpu().numpy()
     future_pred = future_pred.cpu().numpy()
 
-    n_plot = min(n_plot, observed.shape[0])
     fig, axes = plt.subplots(2, 2, figsize=(10, 10))
     axes = axes.flatten()
 
-    for i in range(n_plot):
-        ax = axes[i]
+    for panel_i, sample_i in enumerate(valid_indices):
+        ax = axes[panel_i]
 
-        obs = observed[i]
-        true_full = full_traj[i]
-        pred_full = np.concatenate([obs, future_pred[i]], axis=0)
+        obs = observed[panel_i]
+        true_full = full_traj[panel_i]
+        pred_full = np.concatenate([obs, future_pred[panel_i]], axis=0)
 
         ax.plot(true_full[:, 0], true_full[:, 1], "k--", linewidth=1.5, label="true full traj")
         ax.plot(pred_full[:, 0], pred_full[:, 1], color="red", linewidth=2, label="predicted rollout")
-        ax.plot(obs[:, 0], obs[:, 1], "bo-", markersize=3, linewidth=1.5, label="observed prefix")
+        ax.scatter(obs[:, 0], obs[:, 1], color="blue", s=10, label="observed prefix")
 
         ax.scatter(obs[0, 0], obs[0, 1], color="green", s=40, label="start")
         ax.scatter(obs[-1, 0], obs[-1, 1], color="orange", s=40, label="obs end")
         ax.scatter(true_full[-1, 0], true_full[-1, 1], color="purple", s=40, label="target end")
 
-        ax.set_title(f"Trajectory {i}")
+        ax.set_title(f"Trajectory {sample_i}")
         ax.axis("equal")
 
     for j in range(n_plot, len(axes)):
