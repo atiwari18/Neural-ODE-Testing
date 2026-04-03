@@ -90,7 +90,7 @@ parser.add_argument('--noise-weight', type=float, default=0.01, help="Noise ampl
 
 #New Arguments
 parser.add_argument("--spiral", action="store_true", help="Including this tag will generate plots at the end of the spiral run.")
-
+parser.add_argument("--shared_spiral_path", type=str, default="Experiments/shared_spiral_dataset.pt")
 
 args = parser.parse_args()
 

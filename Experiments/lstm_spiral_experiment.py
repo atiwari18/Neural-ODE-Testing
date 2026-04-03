@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from lib.generate_spirals import generate_spiral_extrap_dataset
+from lib.generate_spirals import generate_spiral_extrap_dataset, load_or_create_shared_spiral_dataset
 from models.lstm import Seq2SeqLSTM, plot_rollouts, split_train_test
 from dataset.lstm_dataset import SpiralSequenceDataset
 
@@ -35,6 +35,8 @@ def parse_args():
     parser.add_argument("--seed", type=int, default=1991)
     parser.add_argument("--plot-every", type=int, default=25)
     parser.add_argument("--save-dir", type=str, default="LSTM_Spiral_Results")
+    parser.add_argument("--shared_spiral_path", type=str, default="Experiments/shared_spiral_dataset.pt")
+    parser.add_argument("--force_regen_shared", action="store_true")
 
     return parser.parse_args()
 
@@ -47,19 +49,21 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     os.makedirs(args.save_dir, exist_ok=True)
 
-    full_data, observed_data, _, _ = generate_spiral_extrap_dataset(
-        nspiral=args.nspiral,
-        ntotal=args.ntotal,
-        obs_len=args.obs_len,
-        pred_len=args.pred_len,
-        start=0.0,
-        stop=args.stop,
-        noise_std=args.noise_std,
-        a=0.0,
-        b=0.3,
-        savefig=True,
-        device=device,
-    )
+    full_data, observed_data, _, _ = load_or_create_shared_spiral_dataset(
+    dataset_path=args.shared_spiral_path,
+    nspiral=args.nspiral,
+    ntotal=args.ntotal,
+    obs_len=args.obs_len,
+    pred_len=args.pred_len,
+    start=0.0,
+    stop=args.stop,
+    noise_std=args.noise_std,
+    a=0.0,
+    b=0.3,
+    savefig=True,
+    device=device,
+    force_regen=args.force_regen_shared,
+)
 
     train_full, test_full, train_obs, test_obs = split_train_test(
         full_data, observed_data, train_frac=0.8

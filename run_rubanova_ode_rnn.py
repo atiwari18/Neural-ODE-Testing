@@ -23,6 +23,8 @@ def parse_args():
 
 
 def build_command(args, run_dir, niters, lr, latents, timepoints, noise_weight):
+    shared_spiral_path = ROOT_DIR / "Experiments" / "shared_spiral_dataset.pt"
+
     cmd = [
         sys.executable,
         str(RUN_SCRIPT),
@@ -40,8 +42,10 @@ def build_command(args, run_dir, niters, lr, latents, timepoints, noise_weight):
         "--noise-weight", str(noise_weight),
         "--latents", str(latents),
 
+        # Use one shared saved dataset so different models see the same spirals.
+        "--shared_spiral_path", str(shared_spiral_path),
+
         "--save", str(run_dir),
-        # "--random-seed", str(args.seed),
     ]
 
     return cmd
@@ -57,10 +61,10 @@ if __name__ == "__main__":
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
     # Hyperparameter grid
-    NITERS_LIST = [10]
+    NITERS_LIST = [1000]
     LR_LIST = [1e-2]
     LATENT_DIM_LIST = [6]
-    TIMEPOINTS_LIST = [50]
+    TIMEPOINTS_LIST = [40]
     NOISE_WEIGHT_LIST = [0.1]
 
     grid = list(itertools.product(
@@ -82,7 +86,7 @@ if __name__ == "__main__":
             f"_lr-{lr}"
             f"_latents-{latents}"
             f"_tp-{timepoints}"
-            f"_noise-{noise_weight}"
+            f"_noise-{noise_weight}-same_spirals"
         )
 
         run_dir = RESULTS_DIR / label

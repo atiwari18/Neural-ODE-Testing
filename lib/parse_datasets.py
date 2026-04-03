@@ -22,7 +22,7 @@ from torch.utils.data import DataLoader
 from sklearn import model_selection
 import random
 
-from lib.generate_spirals import generate_spiral_extrap_dataset
+from lib.generate_spirals import generate_spiral_extrap_dataset, load_or_create_shared_spiral_dataset
 
 #####################################################################################################
 def parse_datasets(args, device):
@@ -197,19 +197,36 @@ def parse_datasets(args, device):
 		obs_len = args.timepoints
 		pred_len = args.timepoints * 4
 
-		full_data, observed_data, full_tp, observed_tp = generate_spiral_extrap_dataset(
-			nspiral=args.n,
-			ntotal=max(pred_len + 50, 500),
-			obs_len=obs_len,
-			pred_len=pred_len,
-			start=0.0,
-			stop=args.max_t,
-			noise_std=args.noise_weight,
-			a=0.0,
-			b=0.3,
-			savefig=False,
-			device=device,
-		)
+		if getattr(args, "shared_spiral_path", None):
+			full_data, observed_data, full_tp, observed_tp = load_or_create_shared_spiral_dataset(
+				dataset_path=args.shared_spiral_path,
+				nspiral=args.n,
+				ntotal=max(pred_len + 50, 500),
+				obs_len=obs_len,
+				pred_len=pred_len,
+				start=0.0,
+				stop=args.max_t,
+				noise_std=args.noise_weight,
+				a=0.0,
+				b=0.3,
+				savefig=False,
+				device=device,
+			)
+		else:
+			# Fall back to the old behavior: generate a fresh dataset for this run.
+			full_data, observed_data, full_tp, observed_tp = generate_spiral_extrap_dataset(
+				nspiral=args.n,
+				ntotal=max(pred_len + 50, 500),
+				obs_len=obs_len,
+				pred_len=pred_len,
+				start=0.0,
+				stop=args.max_t,
+				noise_std=args.noise_weight,
+				a=0.0,
+				b=0.3,
+				savefig=False,
+				device=device,
+			)
 
 		n_samples = full_data.size(0)
 		input_dim = full_data.size(-1)

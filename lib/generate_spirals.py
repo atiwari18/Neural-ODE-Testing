@@ -2,6 +2,93 @@ import numpy as np
 import numpy.random as npr
 import torch
 import matplotlib.pyplot as plt
+from pathlib import Path
+
+def load_or_create_shared_spiral_dataset(
+    dataset_path,
+    nspiral=1000,
+    ntotal=1000,
+    obs_len=40,
+    pred_len=200,
+    start=0.0,
+    stop=6 * np.pi,
+    noise_std=0.1,
+    a=0.0,
+    b=0.3,
+    savefig=False,
+    device=torch.device("cpu"),
+    force_regen=False,
+):
+    #Convert to a Path object so path handling is easier and more reliable.
+    dataset_path = Path(dataset_path)
+
+    # Record the exact dataset settings so we can detect accidental mismatches.
+    expected_config = {
+        "nspiral": int(nspiral),
+        "ntotal": int(ntotal),
+        "obs_len": int(obs_len),
+        "pred_len": int(pred_len),
+        "start": float(start),
+        "stop": float(stop),
+        "noise_std": float(noise_std),
+        "a": float(a),
+        "b": float(b),
+    }
+
+    # If the file already exists and we are not forcing regeneration,
+    # load it and verify that its settings match the current request.
+    if dataset_path.exists() and not force_regen:
+        saved = torch.load(dataset_path, map_location="cpu")
+        saved_config = saved.get("config", {})
+
+        # Refuse to silently use the wrong dataset.
+        if saved_config != expected_config:
+            raise ValueError(
+                f"Shared spiral dataset config mismatch at {dataset_path}. "
+                f"Expected {expected_config}, found {saved_config}. "
+                "Delete the file, choose a different path, or regenerate it with force_regen=True."
+            )
+
+        # Move the saved tensors to the requested device before returning them.
+        return (
+            saved["full_data"].to(device),
+            saved["observed_data"].to(device),
+            saved["full_time_steps"].to(device),
+            saved["observed_time_steps"].to(device),
+        )
+
+    # If the dataset file does not exist yet, generate it now.
+    full_data, observed_data, full_time_steps, observed_time_steps = generate_spiral_extrap_dataset(
+        nspiral=nspiral,
+        ntotal=ntotal,
+        obs_len=obs_len,
+        pred_len=pred_len,
+        start=start,
+        stop=stop,
+        noise_std=noise_std,
+        a=a,
+        b=b,
+        savefig=savefig,
+        device=device,
+    )
+
+    # Make sure the parent folder exists before saving.
+    dataset_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Save CPU copies so the file can be loaded on any machine/device later.
+    torch.save(
+        {
+            "config": expected_config,
+            "full_data": full_data.detach().cpu(),
+            "observed_data": observed_data.detach().cpu(),
+            "full_time_steps": full_time_steps.detach().cpu(),
+            "observed_time_steps": observed_time_steps.detach().cpu(),
+        },
+        dataset_path,
+    )
+
+    return full_data, observed_data, full_time_steps, observed_time_steps
+
 
 def plot_spiral_dataset_example(full_data, observed_data, full_tp, observed_tp, idx=0, savepath=None):
     full_traj = full_data[idx].detach().cpu().numpy()
