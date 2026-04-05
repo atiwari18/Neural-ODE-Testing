@@ -150,6 +150,8 @@ def generate_spiral_extrap_dataset(
     b=0.3,
     savefig=False,
     device=torch.device("cpu"),
+    irregular=False,
+    irregular_window_time=2 * np.pi,
 ):
     """
     Create a dataset for long-horizon extrapolation.
@@ -188,12 +190,43 @@ def generate_spiral_extrap_dataset(
         plt.legend()
         plt.savefig("./ground_truth_spirals.png", dpi=300)
 
-    full_windows = []
-    observed_windows = []
-
     max_start = ntotal - pred_len
     if max_start <= 0:
         raise ValueError("ntotal must be larger than pred_len.")
+    
+    # Full target is always on a dense local time grid.
+    full_local_ts = global_ts[:pred_len] - global_ts[0]
+
+    if irregular:
+        # Pick candidate dense-grid points whose local time is within the
+        # requested observation window, e.g. [0, 2*pi].
+        candidate_idx = np.where(full_local_ts <= irregular_window_time)[0]
+
+        if len(candidate_idx) < obs_len:
+            raise ValueError(
+                f"irregular_window_time={irregular_window_time} only contains "
+                f"{len(candidate_idx)} available dense points, but obs_len={obs_len}. "
+                "Increase irregular_window_time, increase ntotal, or reduce obs_len."
+            )
+
+        if candidate_idx[-1] >= pred_len - 1:
+            raise ValueError(
+                "irregular_window_time reaches the end of the prediction horizon. "
+                "Reduce irregular_window_time or increase pred_len so there is future left to extrapolate."
+            )
+
+        # Choose obs_len irregularly spaced observations from that early-time region.
+        observed_offsets = np.sort(
+            npr.choice(candidate_idx, size=obs_len, replace=False)
+        )
+    else:
+        # Regular observed prefix.
+        observed_offsets = np.arange(obs_len)
+
+    observed_local_ts = full_local_ts[observed_offsets]
+
+    full_windows = []
+    observed_windows = []
 
     for _ in range(nspiral):
         # Randomly choose which spiral family this sample comes from.
@@ -203,13 +236,13 @@ def generate_spiral_extrap_dataset(
         # Choose a random valid start so we can still take pred_len points.
         t0_idx = npr.randint(0, max_start)
 
-        # Extract the long target window.
+        # Full target trajectory remains dense.
         full_window = source_traj[t0_idx : t0_idx + pred_len].copy()
 
-        # The observed part is just the prefix of that window.
-        observed_window = full_window[:obs_len].copy()
+        # Observed points come from the chosen offsets.
+        observed_window = full_window[observed_offsets].copy()
 
-        # Add observation noise only to the observed part.
+        # Add noise only to observed points.
         observed_window += npr.randn(*observed_window.shape) * noise_std
 
         full_windows.append(full_window)
@@ -218,11 +251,7 @@ def generate_spiral_extrap_dataset(
     full_windows = torch.tensor(np.stack(full_windows, axis=0), dtype=torch.float32, device=device)
     observed_windows = torch.tensor(np.stack(observed_windows, axis=0), dtype=torch.float32, device=device)
 
-    # Use local time relative to the start of the sampled window.
-    local_ts = global_ts[:pred_len] - global_ts[0]
-    observed_ts = local_ts[:obs_len]
-
-    full_time_steps = torch.tensor(local_ts, dtype=torch.float32, device=device)
-    observed_time_steps = torch.tensor(observed_ts, dtype=torch.float32, device=device)
+    full_time_steps = torch.tensor(full_local_ts, dtype=torch.float32, device=device)
+    observed_time_steps = torch.tensor(observed_local_ts, dtype=torch.float32, device=device)
 
     return full_windows, observed_windows, full_time_steps, observed_time_steps

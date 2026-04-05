@@ -201,7 +201,7 @@ def parse_datasets(args, device):
 			full_data, observed_data, full_tp, observed_tp = load_or_create_shared_spiral_dataset(
 				dataset_path=args.shared_spiral_path,
 				nspiral=args.n,
-				ntotal=max(pred_len + 50, 500),
+				ntotal=max(pred_len * 6, 1000),   #For Normal/Initial Tests max(pred_len + 50, 500)
 				obs_len=obs_len,
 				pred_len=pred_len,
 				start=0.0,
@@ -211,12 +211,14 @@ def parse_datasets(args, device):
 				b=0.3,
 				savefig=False,
 				device=device,
+				irregular=True, 
+				irregular_resolution=4
 			)
 		else:
 			# Fall back to the old behavior: generate a fresh dataset for this run.
 			full_data, observed_data, full_tp, observed_tp = generate_spiral_extrap_dataset(
 				nspiral=args.n,
-				ntotal=max(pred_len + 50, 500),
+				ntotal=max(pred_len * 6, 1000),
 				obs_len=obs_len,
 				pred_len=pred_len,
 				start=0.0,
@@ -226,6 +228,8 @@ def parse_datasets(args, device):
 				b=0.3,
 				savefig=False,
 				device=device,
+				irregular=True, 
+				irregular_resolution=4
 			)
 
 		n_samples = full_data.size(0)
