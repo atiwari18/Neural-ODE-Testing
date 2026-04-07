@@ -195,7 +195,7 @@ def parse_datasets(args, device):
 
 	if dataset_name == "spiral":
 		obs_len = args.timepoints
-		pred_len = args.timepoints * 4
+		pred_len = args.timepoints * 8
 
 		if getattr(args, "shared_spiral_path", None):
 			full_data, observed_data, full_tp, observed_tp = load_or_create_shared_spiral_dataset(
@@ -211,8 +211,8 @@ def parse_datasets(args, device):
 				b=0.3,
 				savefig=False,
 				device=device,
-				irregular=True, 
-				irregular_resolution=4
+				irregular=getattr(args, "irregular-spiral", False), 
+    			irregular_window_time=getattr(args, "irregular-window-time", 2 * np.pi),
 			)
 		else:
 			# Fall back to the old behavior: generate a fresh dataset for this run.
@@ -228,8 +228,8 @@ def parse_datasets(args, device):
 				b=0.3,
 				savefig=False,
 				device=device,
-				irregular=True, 
-				irregular_resolution=4
+				irregular=getattr(args, "irregular-spiral", False), 
+    			irregular_window_time=getattr(args, "irregular-window-time", 2 * np.pi),
 			)
 
 		n_samples = full_data.size(0)

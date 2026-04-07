@@ -18,6 +18,8 @@ def load_or_create_shared_spiral_dataset(
     savefig=False,
     device=torch.device("cpu"),
     force_regen=False,
+    irregular=False, 
+    irregular_window_time=2
 ):
     #Convert to a Path object so path handling is easier and more reliable.
     dataset_path = Path(dataset_path)
@@ -33,6 +35,8 @@ def load_or_create_shared_spiral_dataset(
         "noise_std": float(noise_std),
         "a": float(a),
         "b": float(b),
+        "irregular" : bool(irregular), 
+        "irregular_window_time" : float(irregular_window_time)
     }
 
     # If the file already exists and we are not forcing regeneration,
@@ -70,6 +74,8 @@ def load_or_create_shared_spiral_dataset(
         b=b,
         savefig=savefig,
         device=device,
+        irregular=irregular, 
+        irregular_window_time=irregular_window_time
     )
 
     # Make sure the parent folder exists before saving.

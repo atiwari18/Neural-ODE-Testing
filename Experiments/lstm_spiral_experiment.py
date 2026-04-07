@@ -37,6 +37,8 @@ def parse_args():
     parser.add_argument("--save-dir", type=str, default="LSTM_Spiral_Results")
     parser.add_argument("--shared_spiral_path", type=str, default="Experiments/shared_spiral_dataset.pt")
     parser.add_argument("--force_regen_shared", action="store_true")
+    parser.add_argument("--irregular_spiral", action="store_true")
+    parser.add_argument("--irregular_window_time", type=float, default=2 * np.pi)
 
     return parser.parse_args()
 
@@ -49,7 +51,7 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     os.makedirs(args.save_dir, exist_ok=True)
 
-    full_data, observed_data, _, _ = load_or_create_shared_spiral_dataset(
+    full_data, observed_data, full_tp, observed_tp = load_or_create_shared_spiral_dataset(
     dataset_path=args.shared_spiral_path,
     nspiral=args.nspiral,
     ntotal=args.ntotal,
@@ -63,23 +65,26 @@ if __name__ == "__main__":
     savefig=True,
     device=device,
     force_regen=args.force_regen_shared,
-)
+    irregular=args.irregular_spiral,
+    irregular_window_time=args.irregular_window_time 
+    )
 
     train_full, test_full, train_obs, test_obs = split_train_test(
         full_data, observed_data, train_frac=0.8
     )
 
-    train_dataset = SpiralSequenceDataset(train_obs, train_full)
-    test_dataset = SpiralSequenceDataset(test_obs, test_full)
+    train_dataset = SpiralSequenceDataset(train_obs, train_full, observed_tp)
+    test_dataset = SpiralSequenceDataset(test_obs, test_full, observed_tp)
 
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
     test_loader = DataLoader(test_dataset, batch_size=min(args.batch_size, len(test_dataset)), shuffle=False)
 
     model = Seq2SeqLSTM(
-        input_dim=2,
+        input_dim=3,
         hidden_dim=args.hidden_dim,
         num_layers=args.num_layers,
         dropout=args.dropout,
+        output_dim=2,
     ).to(device)
 
     total_params = sum(p.numel() for p in model.parameters())

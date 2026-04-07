@@ -182,8 +182,11 @@ def plot_lstm_sine_extrapolation(t_train, state_train, t_all, lstm_all, true_fun
 #==============================================================================================================
 
 class Seq2SeqLSTM(nn.Module):
-    def __init__(self, input_dim=2, hidden_dim=25, num_layers=1, dropout=0.0):
+    def __init__(self, input_dim=3, hidden_dim=25, num_layers=1, dropout=0.0, output_dim=2):
         super().__init__()
+
+        self.input_dim = input_dim
+        self.output_dim = output_dim
 
         self.encoder = nn.LSTM(
             input_size=input_dim, 
@@ -201,7 +204,7 @@ class Seq2SeqLSTM(nn.Module):
             dropout=dropout if num_layers > 1 else 0.0,
         )
 
-        self.output_layer = nn.Linear(hidden_dim, input_dim)
+        self.output_layer = nn.Linear(hidden_dim, output_dim)
 
     def forward(self, observed, future_len, future_truth=None, teacher_forcing_ratio=0.5):
         batch_size = observed.size(0)
@@ -215,13 +218,19 @@ class Seq2SeqLSTM(nn.Module):
 
         for t in range(future_len):
             decoder_out, (hidden, cell) = self.decoder(decoder_input, (hidden, cell))
+
+            #predict the next spatial point [x, y]
             step_pred = self.output_layer(decoder_out)
             preds.append(step_pred)
 
             if future_truth is not None and torch.rand(1).item() < teacher_forcing_ratio:
-                decoder_input = future_truth[:, t:t+1, :]
+                next_xy = future_truth[:, t:t+1, :]
             else:
-                decoder_input = step_pred
+                next_xy = step_pred
+
+            last_dt = decoder_input[:, :, 2:3]
+
+            decoder_input = torch.cat([next_xy, last_dt], dim=-1)
 
         preds = torch.cat(preds, dim=1)
         return preds
@@ -277,7 +286,8 @@ def plot_rollouts(model, test_dataset, device, epoch, save_dir, plot_indices=Non
     for panel_i, sample_i in enumerate(valid_indices):
         ax = axes[panel_i]
 
-        obs = observed[panel_i]
+        #Observed input includes delta_t but only x, y need to be plotted
+        obs = observed[panel_i][:, :2]
         true_full = full_traj[panel_i]
         pred_full = np.concatenate([obs, future_pred[panel_i]], axis=0)
 

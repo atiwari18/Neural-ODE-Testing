@@ -91,6 +91,8 @@ parser.add_argument('--noise-weight', type=float, default=0.01, help="Noise ampl
 #New Arguments
 parser.add_argument("--spiral", action="store_true", help="Including this tag will generate plots at the end of the spiral run.")
 parser.add_argument("--shared_spiral_path", type=str, default="Experiments/shared_spiral_dataset.pt")
+parser.add_argument("--irregular-spiral", action="store_true")
+parser.add_argument("--irregular-window-time", type=float, default=2 * np.pi)
 
 args = parser.parse_args()
 
