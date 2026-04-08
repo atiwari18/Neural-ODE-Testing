@@ -198,10 +198,10 @@ def parse_datasets(args, device):
 		pred_len = args.timepoints * 8
 
 		if getattr(args, "shared_spiral_path", None):
-			full_data, observed_data, full_tp, observed_tp = load_or_create_shared_spiral_dataset(
+			full_data, observed_data, full_tp, observed_tp, observed_offsets = load_or_create_shared_spiral_dataset(
 				dataset_path=args.shared_spiral_path,
 				nspiral=args.n,
-				ntotal=max(pred_len * 6, 1000),   #For Normal/Initial Tests max(pred_len + 50, 500)
+				ntotal=max(pred_len + 50, 500),
 				obs_len=obs_len,
 				pred_len=pred_len,
 				start=0.0,
@@ -211,14 +211,14 @@ def parse_datasets(args, device):
 				b=0.3,
 				savefig=False,
 				device=device,
-				irregular=getattr(args, "irregular-spiral", False), 
-    			irregular_window_time=getattr(args, "irregular-window-time", 2 * np.pi),
+				irregular=getattr(args, "irregular_spiral", False), 
+    			irregular_window_time=getattr(args, "irregular_window_time", 2 * np.pi),
 			)
 		else:
 			# Fall back to the old behavior: generate a fresh dataset for this run.
-			full_data, observed_data, full_tp, observed_tp = generate_spiral_extrap_dataset(
+			full_data, observed_data, full_tp, observed_tp, observed_offsets = generate_spiral_extrap_dataset(
 				nspiral=args.n,
-				ntotal=max(pred_len * 6, 1000),
+				ntotal=max(pred_len + 50, 500),
 				obs_len=obs_len,
 				pred_len=pred_len,
 				start=0.0,
@@ -228,8 +228,8 @@ def parse_datasets(args, device):
 				b=0.3,
 				savefig=False,
 				device=device,
-				irregular=getattr(args, "irregular-spiral", False), 
-    			irregular_window_time=getattr(args, "irregular-window-time", 2 * np.pi),
+				irregular=getattr(args, "irregular_spiral", False), 
+    			irregular_window_time=getattr(args, "irregular_window_time", 2 * np.pi),
 			)
 
 		n_samples = full_data.size(0)

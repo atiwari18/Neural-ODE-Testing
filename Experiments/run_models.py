@@ -91,8 +91,8 @@ parser.add_argument('--noise-weight', type=float, default=0.01, help="Noise ampl
 #New Arguments
 parser.add_argument("--spiral", action="store_true", help="Including this tag will generate plots at the end of the spiral run.")
 parser.add_argument("--shared_spiral_path", type=str, default="Experiments/shared_spiral_dataset.pt")
-parser.add_argument("--irregular-spiral", action="store_true")
-parser.add_argument("--irregular-window-time", type=float, default=2 * np.pi)
+parser.add_argument("--irregular_spiral", action="store_true")
+parser.add_argument("--irregular_window_time", type=float, default=2 * np.pi)
 
 args = parser.parse_args()
 
@@ -124,6 +124,13 @@ def plot_spiral_extrapolation(test_dict, model, epoch, experimentID, save_dir="O
 	observed_data = test_dict["observed_data"].detach().cpu().numpy()
 	data_to_predict = test_dict["data_to_predict"].detach().cpu().numpy()
 
+	#Calculating mse per sample
+	pred_t_torch = pred_y[0].detach().cpu()
+	true_t_torch = test_dict["data_to_predict"].detach().cpu()
+
+	# Full-horizon per-sample MSE.
+	full_mse = ((pred_t_torch - true_t_torch) ** 2).mean(dim=(1, 2)).numpy()
+
 	#
 	valid_indices = [idx for idx in plot_indices if idx < observed_data.shape[0]]
 	n_plot = len(valid_indices)
@@ -152,7 +159,7 @@ def plot_spiral_extrapolation(test_dict, model, epoch, experimentID, save_dir="O
 		ax.scatter(obs[0, 0], obs[0, 1], color="green", s=40, label="start")
 		ax.scatter(true_traj[-1, 0], true_traj[-1, 1], color="purple", s=40, label="target end")
 
-		ax.set_title(f"Trajectory {sample_i}")
+		ax.set_title(f"Trajectory {sample_i} | full MSE={full_mse[sample_i]:.4f}")
 		ax.axis("equal")
 
 	# Hide unused axes if fewer than 4

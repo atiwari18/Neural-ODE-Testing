@@ -51,7 +51,7 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     os.makedirs(args.save_dir, exist_ok=True)
 
-    full_data, observed_data, full_tp, observed_tp = load_or_create_shared_spiral_dataset(
+    full_data, observed_data, full_tp, observed_tp, observed_offsets = load_or_create_shared_spiral_dataset(
     dataset_path=args.shared_spiral_path,
     nspiral=args.nspiral,
     ntotal=args.ntotal,
@@ -73,8 +73,8 @@ if __name__ == "__main__":
         full_data, observed_data, train_frac=0.8
     )
 
-    train_dataset = SpiralSequenceDataset(train_obs, train_full, observed_tp)
-    test_dataset = SpiralSequenceDataset(test_obs, test_full, observed_tp)
+    train_dataset = SpiralSequenceDataset(train_obs, train_full, observed_tp, observed_offsets)
+    test_dataset = SpiralSequenceDataset(test_obs, test_full, observed_tp, observed_offsets)
 
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
     test_loader = DataLoader(test_dataset, batch_size=min(args.batch_size, len(test_dataset)), shuffle=False)

@@ -273,10 +273,16 @@ def plot_rollouts(model, test_dataset, device, epoch, save_dir, plot_indices=Non
     full_traj = torch.stack(full_traj_list).to(device)
 
     with torch.no_grad():
-        future_pred = model(observed, future_len=future.size(1), future_truth=None, teacher_forcing_ratio=0.0)
+        future_pred = model(
+            observed,
+            future_len=future.size(1),
+            future_truth=None,
+            teacher_forcing_ratio=0.0,
+        )
+
+    future_mse = ((future_pred - future) ** 2).mean(dim=(1, 2)).cpu().numpy()
 
     observed = observed.cpu().numpy()
-    future = future.cpu().numpy()
     full_traj = full_traj.cpu().numpy()
     future_pred = future_pred.cpu().numpy()
 
@@ -286,20 +292,65 @@ def plot_rollouts(model, test_dataset, device, epoch, save_dir, plot_indices=Non
     for panel_i, sample_i in enumerate(valid_indices):
         ax = axes[panel_i]
 
-        #Observed input includes delta_t but only x, y need to be plotted
-        obs = observed[panel_i][:, :2]
+        # Observed tensor includes [x, y, delta_t], but we only plot x/y.
+        obs_xy = observed[panel_i][:, :2]
         true_full = full_traj[panel_i]
-        pred_full = np.concatenate([obs, future_pred[panel_i]], axis=0)
 
-        ax.plot(true_full[:, 0], true_full[:, 1], "k--", linewidth=1.5, label="true full traj")
-        ax.plot(pred_full[:, 0], pred_full[:, 1], color="red", linewidth=2, label="predicted rollout")
-        ax.scatter(obs[:, 0], obs[:, 1], color="blue", s=10, label="observed prefix")
+        # Start predicted future from the last observed point.
+        future_rollout = np.concatenate([obs_xy[-1:, :], future_pred[panel_i]], axis=0)
 
-        ax.scatter(obs[0, 0], obs[0, 1], color="green", s=40, label="start")
-        ax.scatter(obs[-1, 0], obs[-1, 1], color="orange", s=40, label="obs end")
-        ax.scatter(true_full[-1, 0], true_full[-1, 1], color="purple", s=40, label="target end")
+        ax.plot(
+            true_full[:, 0],
+            true_full[:, 1],
+            "k--",
+            linewidth=1.5,
+            label="true full traj",
+        )
 
-        ax.set_title(f"Trajectory {sample_i}")
+        ax.plot(
+            future_rollout[:, 0],
+            future_rollout[:, 1],
+            color="red",
+            linewidth=2,
+            label="predicted future",
+        )
+
+        ax.scatter(
+            obs_xy[:, 0],
+            obs_xy[:, 1],
+            color="blue",
+            s=12,
+            label="observed samples",
+        )
+
+        # Green marker is the first observed irregular point.
+        ax.scatter(
+            obs_xy[0, 0],
+            obs_xy[0, 1],
+            color="green",
+            s=40,
+            label="first obs",
+        )
+
+        # Orange marker is the last observed irregular point.
+        ax.scatter(
+            obs_xy[-1, 0],
+            obs_xy[-1, 1],
+            color="orange",
+            s=40,
+            label="last obs",
+        )
+
+        # Purple marker is the end of the dense target trajectory.
+        ax.scatter(
+            true_full[-1, 0],
+            true_full[-1, 1],
+            color="purple",
+            s=40,
+            label="target end",
+        )
+
+        ax.set_title(f"Trajectory {sample_i} | Future MSE = {future_mse[panel_i]:.4f}")
         ax.axis("equal")
 
     for j in range(n_plot, len(axes)):

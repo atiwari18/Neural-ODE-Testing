@@ -4,6 +4,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+import numpy as np
 
 
 ROOT_DIR = Path(__file__).resolve().parent
@@ -41,6 +42,9 @@ def build_command(args, run_dir, niters, lr, latents, timepoints, noise_weight):
         "--max-t", "18.85",
         "--noise-weight", str(noise_weight),
         "--latents", str(latents),
+        "--irregular_spiral",
+        "--irregular_window_time", str(2 * np.pi),
+
 
         # Use one shared saved dataset so different models see the same spirals.
         "--shared_spiral_path", str(shared_spiral_path),
@@ -61,7 +65,7 @@ if __name__ == "__main__":
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
     # Hyperparameter grid
-    NITERS_LIST = [1000]
+    NITERS_LIST = [1]
     LR_LIST = [1e-2]
     LATENT_DIM_LIST = [6]
     TIMEPOINTS_LIST = [40]
@@ -86,7 +90,7 @@ if __name__ == "__main__":
             f"_lr-{lr}"
             f"_latents-{latents}"
             f"_tp-{timepoints}"
-            f"_noise-{noise_weight}-same_spirals"
+            f"_noise-{noise_weight}-irregular"
         )
 
         run_dir = RESULTS_DIR / label

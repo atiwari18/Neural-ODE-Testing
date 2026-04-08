@@ -21,10 +21,11 @@ def generate_lstm_dataset(trajectories, seq_len=20):
     return inputs, targets
 
 class SpiralSequenceDataset(Dataset):
-    def __init__(self, observed_data, full_data, observed_tp):
+    def __init__(self, observed_data, full_data, observed_tp, observed_offsets):
         self.observed_data = observed_data
         self.full_data = full_data
         self.observed_tp = observed_tp
+        self.observed_offsets = observed_offsets
 
         #Compute delta_t between consecutive observed timestamps
         delta_t = observed_tp[1:] - observed_tp[:-1]
@@ -36,16 +37,22 @@ class SpiralSequenceDataset(Dataset):
         #Shape becomes [obs_len, 1] so it can be concatenated with (x, y)
         self.delta_t = delta_t.unsqueeze(-1)
 
+        #The future should start after the last observed dense index
+        self.last_obs_dense_idx = int(observed_offsets[-1].item())
+
     def __len__(self):
         return self.observed_data.size(0)
     
     def __getitem__(self, idx):
         obs = self.observed_data[idx]
         full_traj = self.full_data[idx]
-        future = full_traj[obs.size(0):]
+        #future = full_traj[obs.size(0):]
 
         #Append delta_t as a third feature to each observed point
         #LSTM input is now [x, y, delta_t]
         obs_with_dt = torch.cat([obs, self.delta_t], dim=-1)
+
+        #Start the future target immediately after the last observed dense point.
+        future = full_traj[self.last_obs_dense_idx + 1:]
 
         return obs_with_dt, future, full_traj

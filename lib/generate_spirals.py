@@ -42,7 +42,7 @@ def load_or_create_shared_spiral_dataset(
     # If the file already exists and we are not forcing regeneration,
     # load it and verify that its settings match the current request.
     if dataset_path.exists() and not force_regen:
-        saved = torch.load(dataset_path, map_location="cpu")
+        saved = torch.load(dataset_path, map_location="cpu", weights_only=False)
         saved_config = saved.get("config", {})
 
         # Refuse to silently use the wrong dataset.
@@ -59,10 +59,11 @@ def load_or_create_shared_spiral_dataset(
             saved["observed_data"].to(device),
             saved["full_time_steps"].to(device),
             saved["observed_time_steps"].to(device),
+            saved["observed_offsets_t"].to(device)
         )
 
     # If the dataset file does not exist yet, generate it now.
-    full_data, observed_data, full_time_steps, observed_time_steps = generate_spiral_extrap_dataset(
+    full_data, observed_data, full_time_steps, observed_time_steps, observed_offsets_t = generate_spiral_extrap_dataset(
         nspiral=nspiral,
         ntotal=ntotal,
         obs_len=obs_len,
@@ -89,11 +90,12 @@ def load_or_create_shared_spiral_dataset(
             "observed_data": observed_data.detach().cpu(),
             "full_time_steps": full_time_steps.detach().cpu(),
             "observed_time_steps": observed_time_steps.detach().cpu(),
+            "observed_offsets_t" : observed_offsets_t.detach().cpu()
         },
         dataset_path,
     )
 
-    return full_data, observed_data, full_time_steps, observed_time_steps
+    return full_data, observed_data, full_time_steps, observed_time_steps, observed_offsets_t
 
 
 def plot_spiral_dataset_example(full_data, observed_data, full_tp, observed_tp, idx=0, savepath=None):
@@ -260,4 +262,8 @@ def generate_spiral_extrap_dataset(
     full_time_steps = torch.tensor(full_local_ts, dtype=torch.float32, device=device)
     observed_time_steps = torch.tensor(observed_local_ts, dtype=torch.float32, device=device)
 
-    return full_windows, observed_windows, full_time_steps, observed_time_steps
+    #Return the dense offsets used to choose irregular observed points
+    #This is needed by the LSTM dataset so it know where the observed region ends.
+    observed_offsets_t = torch.tensor(observed_offsets, dtype=torch.long, device=device)
+
+    return full_windows, observed_windows, full_time_steps, observed_time_steps, observed_offsets_t
