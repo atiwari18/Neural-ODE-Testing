@@ -197,7 +197,7 @@ def parse_datasets(args, device):
 		obs_len = args.timepoints
 		pred_len = args.timepoints * 8
 
-		if getattr(args, "shared_spiral_path", None):
+		if getattr(args, "shared_spiral_path_800", None):
 			full_data, observed_data, full_tp, observed_tp, observed_offsets = load_or_create_shared_spiral_dataset(
 				dataset_path=args.shared_spiral_path,
 				nspiral=args.n,

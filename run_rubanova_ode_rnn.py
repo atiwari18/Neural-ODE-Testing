@@ -65,7 +65,7 @@ if __name__ == "__main__":
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
     # Hyperparameter grid
-    NITERS_LIST = [1]
+    NITERS_LIST = [1500]
     LR_LIST = [1e-2]
     LATENT_DIM_LIST = [6]
     TIMEPOINTS_LIST = [40]
