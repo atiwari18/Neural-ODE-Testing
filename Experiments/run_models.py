@@ -90,9 +90,11 @@ parser.add_argument('--noise-weight', type=float, default=0.01, help="Noise ampl
 
 #New Arguments
 parser.add_argument("--spiral", action="store_true", help="Including this tag will generate plots at the end of the spiral run.")
-parser.add_argument("--shared_spiral_path", type=str, default="Experiments/shared_spiral_dataset.pt")
+parser.add_argument("--shared_spiral_path", type=str, default="Experiments/shared_spiral_dataset_800.pt")
 parser.add_argument("--irregular_spiral", action="store_true")
 parser.add_argument("--irregular_window_time", type=float, default=2 * np.pi)
+parser.add_argument("--ntotal", type=int, default=None, help="Dense base trajectory length used to generate spiral windows. "
+															 "If not provided, a default formula based on pred_len is used.")
 
 args = parser.parse_args()
 

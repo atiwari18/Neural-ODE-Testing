@@ -19,12 +19,12 @@ def parse_args():
     parser.add_argument("--seed", type=int, default=1991)
     parser.add_argument("--visualize", action="store_true", default=False)
     parser.add_argument("--dataset", type=str, default="spiral")
-    parser.add_argument("--dry-run", action="store_true", default=False)
+    parser.add_argument("--ntotal", type=int, default=None)
     return parser.parse_args()
 
 
 def build_command(args, run_dir, niters, lr, latents, timepoints, noise_weight):
-    shared_spiral_path = ROOT_DIR / "Experiments" / "shared_spiral_dataset.pt"
+    shared_spiral_path = ROOT_DIR / "Experiments" / "shared_spiral_dataset_800.pt"
 
     cmd = [
         sys.executable,
@@ -35,7 +35,7 @@ def build_command(args, run_dir, niters, lr, latents, timepoints, noise_weight):
         "--spiral",
 
         "-n", "1000",
-        "-b", "100",
+        "-b", "64",
         "--niters", str(niters),
         "--lr", str(lr),
         "--timepoints", str(timepoints),
@@ -52,6 +52,9 @@ def build_command(args, run_dir, niters, lr, latents, timepoints, noise_weight):
         "--save", str(run_dir),
     ]
 
+    if args.ntotal is not None:
+        cmd.extend(["--ntotal", str(args.ntotal)])
+
     return cmd
 
 
@@ -65,7 +68,7 @@ if __name__ == "__main__":
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
     # Hyperparameter grid
-    NITERS_LIST = [1500]
+    NITERS_LIST = [3000]
     LR_LIST = [1e-2]
     LATENT_DIM_LIST = [6]
     TIMEPOINTS_LIST = [40]
@@ -90,7 +93,7 @@ if __name__ == "__main__":
             f"_lr-{lr}"
             f"_latents-{latents}"
             f"_tp-{timepoints}"
-            f"_noise-{noise_weight}-irregular"
+            f"_noise-{noise_weight}-irregular-800"
         )
 
         run_dir = RESULTS_DIR / label
@@ -114,9 +117,9 @@ if __name__ == "__main__":
         print("  " + " ".join(cmd))
         print("=" * 80)
 
-        if args.dry_run:
-            print()
-            continue
+        # if args.dry_run:
+        #     print()
+        #     continue
 
         env = os.environ.copy()
         env["PYTHONPATH"] = str(ROOT_DIR) + os.pathsep + env.get("PYTHONPATH", "")

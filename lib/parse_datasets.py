@@ -195,13 +195,15 @@ def parse_datasets(args, device):
 
 	if dataset_name == "spiral":
 		obs_len = args.timepoints
-		pred_len = args.timepoints * 8
+		pred_len = 800
 
-		if getattr(args, "shared_spiral_path_800", None):
+		print(f"pred_len = {pred_len}")
+
+		if getattr(args, "shared_spiral_path", None):
 			full_data, observed_data, full_tp, observed_tp, observed_offsets = load_or_create_shared_spiral_dataset(
 				dataset_path=args.shared_spiral_path,
 				nspiral=args.n,
-				ntotal=max(pred_len + 50, 500),
+				ntotal=args.ntotal if getattr(args, "ntotal", None) is not None else max(pred_len * 6, 1000),
 				obs_len=obs_len,
 				pred_len=pred_len,
 				start=0.0,
@@ -218,7 +220,7 @@ def parse_datasets(args, device):
 			# Fall back to the old behavior: generate a fresh dataset for this run.
 			full_data, observed_data, full_tp, observed_tp, observed_offsets = generate_spiral_extrap_dataset(
 				nspiral=args.n,
-				ntotal=max(pred_len + 50, 500),
+				ntotal=args.ntotal if getattr(args, "ntotal", None) is not None else max(pred_len * 6, 1000),
 				obs_len=obs_len,
 				pred_len=pred_len,
 				start=0.0,
