@@ -4,6 +4,47 @@ import torch
 import matplotlib.pyplot as plt
 from pathlib import Path
 
+def irregularity_score(x):
+    """
+    Score irregularity by the std of consecutive gaps.
+    Higher means more uneven spacing.
+    """
+    x = np.asarray(x)
+
+    #If a single vector is passed in, convert it to shape [1, n_points]
+    if x.ndim == 1:
+        x = x.reshape(1, -1)
+
+    xs = np.sort(x, axis=1)
+    d = xs[:, 1:] - xs[:, :-1]
+    return np.sort(d, axis=1)
+
+def choose_best_offset(candidate_idx, obs_len, full_local_ts, n_trials=50):
+    """
+    Sample several candidate offset sets and keep the one with
+    the highest irregularity score.
+    """
+    best_offsets = None
+    best_score = -np.inf
+
+    #Make sure the array is a flat array
+    full_local_ts = np.asarray(full_local_ts).reshape(-1)
+
+    for _ in range(n_trials):
+        offsets = np.sort(npr.choice(candidate_idx, size=obs_len, replace=False))
+        
+        #Pull the sample times out for this one candidate.
+        trial_times = full_local_ts[offsets]
+
+        #Score the spacing pattern itself. 
+        score = float(np.ravel(irregularity_score(trial_times))[0])
+
+        if score > best_score:
+            best_score = score
+            best_offsets = offsets
+
+    return best_offsets, best_score
+
 def load_or_create_shared_spiral_dataset(
     dataset_path,
     nspiral=1000,
@@ -223,10 +264,19 @@ def generate_spiral_extrap_dataset(
                 "Reduce irregular_window_time or increase pred_len so there is future left to extrapolate."
             )
 
-        # Choose obs_len irregularly spaced observations from that early-time region.
-        observed_offsets = np.sort(
-            npr.choice(candidate_idx, size=obs_len, replace=False)
-        )
+        # # Choose obs_len irregularly spaced observations from that early-time region.
+        # observed_offsets = np.sort(
+        #     npr.choice(candidate_idx, size=obs_len, replace=False)
+        # )
+
+        #Try several candidate irregular patterns and keep the most irregular one. 
+        observed_offsets, best_score = choose_best_offset(candidate_idx=candidate_idx, 
+                                                          obs_len=obs_len, 
+                                                          full_local_ts=full_local_ts, 
+                                                          n_trials=100)
+
+        print(f"Selected shared irregular offsets with score {best_score:.6f}")
+
     else:
         # Regular observed prefix.
         observed_offsets = np.arange(obs_len)
