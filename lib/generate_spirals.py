@@ -60,7 +60,8 @@ def load_or_create_shared_spiral_dataset(
     device=torch.device("cpu"),
     force_regen=False,
     irregular=False, 
-    irregular_window_time=2
+    irregular_window_time=2,
+    n_trials=100
 ):
     #Convert to a Path object so path handling is easier and more reliable.
     dataset_path = Path(dataset_path)
@@ -77,7 +78,8 @@ def load_or_create_shared_spiral_dataset(
         "a": float(a),
         "b": float(b),
         "irregular" : bool(irregular), 
-        "irregular_window_time" : float(irregular_window_time)
+        "irregular_window_time" : float(irregular_window_time), 
+        "n_trials" : int(n_trials)
     }
 
     # If the file already exists and we are not forcing regeneration,
@@ -117,7 +119,8 @@ def load_or_create_shared_spiral_dataset(
         savefig=savefig,
         device=device,
         irregular=irregular, 
-        irregular_window_time=irregular_window_time
+        irregular_window_time=irregular_window_time, 
+        n_trials=n_trials
     )
 
     # Make sure the parent folder exists before saving.
@@ -201,6 +204,7 @@ def generate_spiral_extrap_dataset(
     device=torch.device("cpu"),
     irregular=False,
     irregular_window_time=2 * np.pi,
+    n_trials=100
 ):
     """
     Create a dataset for long-horizon extrapolation.

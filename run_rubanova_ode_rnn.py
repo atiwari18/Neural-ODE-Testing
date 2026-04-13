@@ -24,7 +24,7 @@ def parse_args():
 
 
 def build_command(args, run_dir, niters, lr, latents, timepoints, noise_weight):
-    shared_spiral_path = ROOT_DIR / "Experiments" / "shared_spiral_dataset_800.pt"
+    shared_spiral_path = ROOT_DIR / "Experiments" / "shared_spiral_dataset_scoring.pt"
 
     cmd = [
         sys.executable,
@@ -71,7 +71,7 @@ if __name__ == "__main__":
     NITERS_LIST = [3000]
     LR_LIST = [1e-2]
     LATENT_DIM_LIST = [6]
-    TIMEPOINTS_LIST = [40]
+    TIMEPOINTS_LIST = [15]
     NOISE_WEIGHT_LIST = [0.1]
 
     grid = list(itertools.product(
@@ -93,7 +93,7 @@ if __name__ == "__main__":
             f"_lr-{lr}"
             f"_latents-{latents}"
             f"_tp-{timepoints}"
-            f"_noise-{noise_weight}-irregular-800"
+            f"_noise-{noise_weight}-irregular-scoring"
         )
 
         run_dir = RESULTS_DIR / label

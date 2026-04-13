@@ -34,11 +34,12 @@ def parse_args():
     parser.add_argument("--teacher-forcing", type=float, default=0.5)
     parser.add_argument("--seed", type=int, default=1991)
     parser.add_argument("--plot-every", type=int, default=25)
-    parser.add_argument("--save-dir", type=str, default="LSTM_Spiral_Results_800")
-    parser.add_argument("--shared_spiral_path", type=str, default="Experiments/shared_spiral_dataset_800.pt")
+    parser.add_argument("--save-dir", type=str, default="LSTM_Spiral_Results_Scoring")
+    parser.add_argument("--shared_spiral_path", type=str, default="Experiments/shared_spiral_dataset_scoring.pt")
     parser.add_argument("--force_regen_shared", action="store_true")
     parser.add_argument("--irregular_spiral", action="store_true")
     parser.add_argument("--irregular_window_time", type=float, default=2 * np.pi)
+    parser.add_argument("--n_trials", type=int, default=100)
 
     return parser.parse_args()
 
@@ -66,7 +67,8 @@ if __name__ == "__main__":
     device=device,
     force_regen=args.force_regen_shared,
     irregular=args.irregular_spiral,
-    irregular_window_time=args.irregular_window_time 
+    irregular_window_time=args.irregular_window_time , 
+    n_trials=args.n_trials
     )
 
     train_full, test_full, train_obs, test_obs = split_train_test(
