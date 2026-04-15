@@ -17,7 +17,8 @@ full_data, obs_data, full_tp, obs_tp, offsets = generate_spiral_extrap_dataset(
     savefig=True,
     device=device,
     irregular=True, 
-    irregular_window_time=2 * torch.pi,
+    irregular_window_time=torch.pi,
+    n_trials=500
 )
 
-plot_spiral_dataset_example(full_data, obs_data, full_tp, obs_tp, idx=3, savepath="spiral_dataset_example_scoring.png")
+plot_spiral_dataset_example(full_data, obs_data, full_tp, obs_tp, idx=3, savepath="spiral_dataset_example_scoring_pi.png")

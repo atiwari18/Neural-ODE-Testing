@@ -24,7 +24,7 @@ def parse_args():
 
 
 def build_command(args, run_dir, niters, lr, latents, timepoints, noise_weight):
-    shared_spiral_path = ROOT_DIR / "Experiments" / "shared_spiral_dataset_scoring.pt"
+    shared_spiral_path = ROOT_DIR / "Experiments" / "shared_spiral_dataset_scoring_pi.pt"
 
     cmd = [
         sys.executable,
@@ -43,7 +43,7 @@ def build_command(args, run_dir, niters, lr, latents, timepoints, noise_weight):
         "--noise-weight", str(noise_weight),
         "--latents", str(latents),
         "--irregular_spiral",
-        "--irregular_window_time", str(2 * np.pi),
+        "--irregular_window_time", str(np.pi),
 
 
         # Use one shared saved dataset so different models see the same spirals.
