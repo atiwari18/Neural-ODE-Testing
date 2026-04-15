@@ -27,7 +27,7 @@ def parse_args():
 
     parser.add_argument("--hidden-dim", type=int, default=32)
     parser.add_argument("--mixed-memory", action="store_true")
-    parser.add_argument("--ode-unfolds", type=int, default=3)
+    parser.add_argument("--ode-unfolds", type=int, default=6)
 
     parser.add_argument("--batch-size", type=int, default=64)
     parser.add_argument("--epochs", type=int, default=200)
@@ -37,7 +37,7 @@ def parse_args():
     parser.add_argument("--plot-every", type=int, default=25)
 
     parser.add_argument("--save-dir", type=str, default="LTC_Results")
-    parser.add_argument("--shared_spiral_path", type=str, default="Experiments/shared_spiral_dataset_scoring_pi.pt")
+    parser.add_argument("--shared_spiral_path", type=str, default="Experiments/shared_spiral_dataset_scoring.pt")
     parser.add_argument("--force_regen_shared", action="store_true")
     parser.add_argument("--irregular_spiral", action="store_true")
     parser.add_argument("--irregular_window_time", type=float, default=2 * np.pi)
@@ -137,10 +137,10 @@ if __name__ == "__main__":
 
             optimizer.zero_grad()
 
-            print("observed_xy:", observed_xy.shape)
-            print("observed_dt:", observed_dt.shape)
-            print("future_xy:", future_xy.shape)
-            print("future_dt:", future_dt.shape)
+            # print("observed_xy:", observed_xy.shape)
+            # print("observed_dt:", observed_dt.shape)
+            # print("future_xy:", future_xy.shape)
+            # print("future_dt:", future_dt.shape)
 
             future_pred = model(
                 observed_xy,

@@ -51,7 +51,7 @@ if __name__ == "__main__":
 
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
-    EPOCHS_LIST = [200]
+    EPOCHS_LIST = [2]
     LR_LIST = [1e-3]
     HIDDEN_DIM_LIST = [32]
     TIMEPOINTS_LIST = [15]
