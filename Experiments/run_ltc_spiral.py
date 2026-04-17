@@ -18,6 +18,8 @@ from dataset.ltc_dataset import SpiralLTCDataset, split_train_test
 
 def parse_args():
     parser = argparse.ArgumentParser()
+
+    #Dataset Settings
     parser.add_argument("--nspiral", type=int, default=1000)
     parser.add_argument("--ntotal", type=int, default=500)
     parser.add_argument("--obs-len", type=int, default=40)
@@ -25,10 +27,12 @@ def parse_args():
     parser.add_argument("--stop", type=float, default=18.85)
     parser.add_argument("--noise-std", type=float, default=0.1)
 
+    #Model Settings
     parser.add_argument("--hidden-dim", type=int, default=32)
     parser.add_argument("--mixed-memory", action="store_true")
     parser.add_argument("--ode-unfolds", type=int, default=6)
 
+    #Training Settings
     parser.add_argument("--batch-size", type=int, default=64)
     parser.add_argument("--epochs", type=int, default=200)
     parser.add_argument("--lr", type=float, default=1e-3)
@@ -36,12 +40,17 @@ def parse_args():
     parser.add_argument("--seed", type=int, default=1991)
     parser.add_argument("--plot-every", type=int, default=25)
 
+    #Output Settings
     parser.add_argument("--save-dir", type=str, default="LTC_Results")
     parser.add_argument("--shared_spiral_path", type=str, default="Experiments/shared_spiral_dataset_scoring.pt")
     parser.add_argument("--force_regen_shared", action="store_true")
     parser.add_argument("--irregular_spiral", action="store_true")
     parser.add_argument("--irregular_window_time", type=float, default=2 * np.pi)
     parser.add_argument("--n_trials", type=int, default=100)
+
+    #NCP settings
+    parser.add_argument("--ncp", action="store_true")
+    parser.add_argument("--sparsity_level", type=float, default=0.5)
 
     return parser.parse_args()
 
@@ -107,12 +116,17 @@ if __name__ == "__main__":
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
     test_loader = DataLoader(test_dataset, batch_size=min(args.batch_size, len(test_dataset)), shuffle=False)
 
+    if args.ncp:
+        print("NCP!!!!")
+
     model = Seq2SeqLTC(
         input_dim=2,
         hidden_dim=args.hidden_dim,
         output_dim=2,
         mixed_memory=args.mixed_memory,
         ode_unfolds=args.ode_unfolds,
+        use_ncp=args.ncp, 
+        sparsity_level=args.sparsity_level
     ).to(device)
 
     total_params = sum(p.numel() for p in model.parameters())

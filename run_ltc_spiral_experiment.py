@@ -16,6 +16,10 @@ def parse_args():
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--ntotal", type=int, default=None)
     parser.add_argument("--pred_len", type=int, default=800)
+
+    #NCP Controls
+    parser.add_argument("--ncp", action="store_true")
+    parser.add_argument("--sparsity_level", type=float, default=0.5)
     return parser.parse_args()
 
 def build_command(args, run_dir, epochs, lr, hidden_dim, noise_weight, timepoints):
@@ -35,6 +39,12 @@ def build_command(args, run_dir, epochs, lr, hidden_dim, noise_weight, timepoint
         "--irregular_spiral",
         "--irregular_window_time", str(np.pi),
     ]
+
+    if args.ncp:
+        cmd.extend([
+            "--ncp", 
+            "--sparsity_level", str(args.sparsity_level)
+        ])
 
     if args.ntotal is not None:
         cmd.extend(["--ntotal", str(args.ntotal)])

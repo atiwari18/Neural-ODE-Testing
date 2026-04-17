@@ -4,23 +4,45 @@ import torch.nn as nn
 import matplotlib.pyplot as plt
 import os
 from ncps.torch import LTC
+from ncps import wirings
 
 class Seq2SeqLTC(nn.Module):
-    def __init__(self, input_dim=2, hidden_dim=32, output_dim=2, mixed_memory=False, ode_unfolds=6):
+    def __init__(self, input_dim=2, hidden_dim=32, output_dim=2, mixed_memory=False, ode_unfolds=6, 
+                 use_ncp=False, sparsity_level=0.5, seed=12):
         super().__init__()
+
+        #If use_ncp is enables then create a structured sparse NCP wiring
+        if use_ncp:
+            wiring = wirings.AutoNCP(
+                units=hidden_dim, 
+                output_size=output_dim, 
+                sparsity_level=sparsity_level, 
+                seed=seed
+            )
+
+            ltc_units = wiring
+        
+        else:
+            ltc_units = hidden_dim
 
         #LTC reccurent backbone
         self.rnn = LTC(
             input_size=input_dim, 
-            units=hidden_dim, 
+            units=ltc_units, 
             return_sequences=False, 
             batch_first=True, 
             mixed_memory=mixed_memory, 
             ode_unfolds=ode_unfolds
         )
 
-        #Map LTC outputs back to x, y coordinates
-        self.output_layer = nn.Linear(self.rnn.output_size, output_dim)
+        #For NCP, the motor layer already has output_dim, so a linear layer is optional
+        if use_ncp:
+            self.output_layer = nn.Identity()
+        else:
+            #Map LTC outputs back to x, y coordinates
+            self.output_layer = nn.Linear(self.rnn.output_size, output_dim)
+
+        self.use_ncp = use_ncp
 
     def forward(self, observed_xy, observed_dt, future_dt, future_truth=None, teacher_forcing_ratio=0.0):
         shared_observed_dt = observed_dt[0:1, :]
