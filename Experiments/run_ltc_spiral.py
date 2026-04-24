@@ -38,7 +38,7 @@ def parse_args():
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--teacher-forcing", type=float, default=0.5)
     parser.add_argument("--seed", type=int, default=1991)
-    parser.add_argument("--plot-every", type=int, default=25)
+    parser.add_argument("--plot-every", type=int, default=500)
 
     #Output Settings
     parser.add_argument("--save-dir", type=str, default="LTC_Results")

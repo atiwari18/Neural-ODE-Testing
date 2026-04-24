@@ -42,7 +42,7 @@ class Seq2SeqLTC(nn.Module):
             #Map LTC outputs back to x, y coordinates
             self.output_layer = nn.Linear(self.rnn.output_size, output_dim)
 
-        self.use_ncp = use_ncp
+        self.ncp = use_ncp
 
     def forward(self, observed_xy, observed_dt, future_dt, future_truth=None, teacher_forcing_ratio=0.0):
         shared_observed_dt = observed_dt[0:1, :]

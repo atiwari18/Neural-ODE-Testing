@@ -61,7 +61,7 @@ if __name__ == "__main__":
 
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
-    EPOCHS_LIST = [2]
+    EPOCHS_LIST = [3000]
     LR_LIST = [1e-3]
     HIDDEN_DIM_LIST = [32]
     TIMEPOINTS_LIST = [15]
@@ -82,7 +82,7 @@ if __name__ == "__main__":
 
     for run_idx, (epochs, lr, hidden_dim, timepoints, noise_weight) in enumerate(grid, start=1):
         label = (
-            f"ltc-epochs-{epochs}"
+            f"ltc-ncps-{epochs}"
             f"_lr-{lr}"
             f"_hidden-{hidden_dim}"
             f"_tp-{timepoints}"
