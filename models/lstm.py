@@ -247,6 +247,20 @@ def split_train_test(full_data, observed_data, train_frac=0.8):
 
     return train_full, test_full, train_obs, test_obs
 
+def split_train_val_test(full_data, observed_data, train_frac=0.7, val_frac=0.15):
+    n = full_data.size(0)
+    n_train = int(train_frac * n)
+    n_val = int(val_frac * n)
+
+    train_full = full_data[:n_train]
+    val_full = full_data[n_train:n_train + n_val]
+    test_full = full_data[n_train + n_val:]
+
+    train_obs = observed_data[:n_train]
+    val_obs = observed_data[n_train:n_train + n_val]
+    test_obs = observed_data[n_train + n_val:]
+
+    return train_full, val_full, test_full, train_obs, val_obs, test_obs
 
 def plot_rollouts(model, test_dataset, device, epoch, save_dir, plot_indices=None):
     os.makedirs(save_dir, exist_ok=True)

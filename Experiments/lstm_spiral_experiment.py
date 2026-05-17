@@ -12,7 +12,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from lib.generate_spirals import generate_spiral_extrap_dataset, load_or_create_shared_spiral_dataset
-from models.lstm import Seq2SeqLSTM, plot_rollouts, split_train_test
+from models.lstm import Seq2SeqLSTM, plot_rollouts, split_train_test, split_train_val_test
 from dataset.lstm_dataset import SpiralSequenceDataset
 
 def parse_args():
@@ -43,6 +43,63 @@ def parse_args():
 
     return parser.parse_args()
 
+def evaluate_lstm(model, loader, criterion, device):
+    model.eval()
+    losses = []
+
+    with torch.no_grad():
+        for observed, future, full_traj in loader:
+            observed = observed.to(device)
+            future = future.to(device)
+
+            future_pred = model(
+                observed,
+                future_len=future.size(1),
+                future_truth=None,
+                teacher_forcing_ratio=0.0,
+            )
+
+            losses.append(criterion(future_pred, future).item())
+
+    return float(np.mean(losses))
+
+def save_lstm_test_extrapolation_summary(model, test_loader, device, save_dir):
+    model.eval()
+    per_sample_mse = []
+
+    with torch.no_grad():
+        for observed, future, full_traj in test_loader:
+            observed = observed.to(device)
+            future = future.to(device)
+
+            future_pred = model(
+                observed,
+                future_len=future.size(1),
+                future_truth=None,
+                teacher_forcing_ratio=0.0,
+            )
+
+            batch_mse = ((future_pred - future) ** 2).mean(dim=(1, 2))
+            per_sample_mse.extend(batch_mse.detach().cpu().tolist())
+
+    per_sample_mse = np.array(per_sample_mse, dtype=float)
+
+    summary = {
+        "n_test_samples": int(per_sample_mse.size),
+        "mean_test_extrap_mse": float(per_sample_mse.mean()),
+        "median_test_extrap_mse": float(np.median(per_sample_mse)),
+        "std_test_extrap_mse": float(per_sample_mse.std()),
+        "min_test_extrap_mse": float(per_sample_mse.min()),
+        "max_test_extrap_mse": float(per_sample_mse.max()),
+    }
+
+    os.makedirs(save_dir, exist_ok=True)
+    with open(os.path.join(save_dir, "test_extrapolation_summary.json"), "w") as f:
+        import json
+        json.dump(summary, f, indent=2)
+
+    return summary
+
 if __name__ == "__main__":
     args = parse_args()
 
@@ -71,14 +128,16 @@ if __name__ == "__main__":
     n_trials=args.n_trials
     )
 
-    train_full, test_full, train_obs, test_obs = split_train_test(
-        full_data, observed_data, train_frac=0.8
+    train_full, val_full, test_full, train_obs, val_obs, test_obs = split_train_val_test(
+        full_data, observed_data, train_frac=0.7, val_frac=0.15
     )
 
     train_dataset = SpiralSequenceDataset(train_obs, train_full, observed_tp, observed_offsets)
+    val_dataset = SpiralSequenceDataset(val_obs, val_full, observed_tp, observed_offsets)
     test_dataset = SpiralSequenceDataset(test_obs, test_full, observed_tp, observed_offsets)
 
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
+    val_loader = DataLoader(val_dataset, batch_size=min(args.batch_size, len(val_dataset)), shuffle=False)
     test_loader = DataLoader(test_dataset, batch_size=min(args.batch_size, len(test_dataset)), shuffle=False)
 
     model = Seq2SeqLSTM(
@@ -97,7 +156,8 @@ if __name__ == "__main__":
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
     criterion = nn.MSELoss()
 
-    best_test = float("inf")
+    best_val = float("inf")
+    best_test_at_best_val = float("inf")
 
     for epoch in range(1, args.epochs + 1):
         model.train()
@@ -126,40 +186,28 @@ if __name__ == "__main__":
 
             train_losses.append(loss.item())
 
-        model.eval()
-        test_losses = []
-
-        with torch.no_grad():
-            for observed, future, full_traj in test_loader:
-                observed = observed.to(device)
-                future = future.to(device)
-
-                future_pred = model(
-                    observed,
-                    future_len=future.size(1),
-                    future_truth=None,
-                    teacher_forcing_ratio=0.0,
-                )
-
-                loss = criterion(future_pred, future)
-                test_losses.append(loss.item())
-
         mean_train = float(np.mean(train_losses))
-        mean_test = float(np.mean(test_losses))
+        mean_val = evaluate_lstm(model, val_loader, criterion, device)
+        mean_test = evaluate_lstm(model, test_loader, criterion, device)
 
         print(
             f"Epoch {epoch:04d} | "
             f"train_mse {mean_train:.6f} | "
+            f"val_mse {mean_val:.6f} | "
             f"test_mse {mean_test:.6f}"
         )
 
-        if mean_test < best_test:
-            best_test = mean_test
+        if mean_val < best_val:
+            best_val = mean_val
+            best_test_at_best_val = mean_test
+
             torch.save(
                 {
                     "model_state_dict": model.state_dict(),
                     "args": vars(args),
-                    "best_test_mse": best_test,
+                    "best_val_mse": best_val,
+                    "test_mse_at_best_val": best_test_at_best_val,
+                    "epoch": epoch,
                 },
                 os.path.join(args.save_dir, "best_lstm_spiral.pt"),
             )
@@ -174,3 +222,5 @@ if __name__ == "__main__":
                 plot_indices=[0, 1, 2, 3]
             )
 
+        summary = save_lstm_test_extrapolation_summary(model, test_loader, device, args.save_dir)
+        print(f"All-test extrapolation summary saved!")
