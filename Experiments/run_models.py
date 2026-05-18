@@ -133,6 +133,22 @@ def plot_spiral_extrapolation(test_dict, model, epoch, experimentID, save_dir="O
 	# Full-horizon per-sample MSE.
 	full_mse = ((pred_t_torch - true_t_torch) ** 2).mean(dim=(1, 2)).numpy()
 
+	summary = {
+    "n_test_samples": int(full_mse.size),
+    "mean_test_extrap_mse": float(full_mse.mean()),
+    "median_test_extrap_mse": float(np.median(full_mse)),
+    "std_test_extrap_mse": float(full_mse.std()),
+    "min_test_extrap_mse": float(full_mse.min()),
+    "max_test_extrap_mse": float(full_mse.max()),
+	}
+
+	summary_path = os.path.join(save_dir, "test_extrapolation_summary.json")
+	with open(summary_path, "w") as f:
+		import json
+		json.dump(summary, f, indent=2)
+
+	print(f"Saved all-test extrapolation summary to {summary_path}")
+
 	#
 	valid_indices = [idx for idx in plot_indices if idx < observed_data.shape[0]]
 	n_plot = len(valid_indices)
@@ -339,6 +355,12 @@ if __name__ == '__main__':
 
 	num_batches = data_obj["n_train_batches"]
 
+	#Variables to track 
+	best_val_mse = float("inf")
+	best_test_mse_at_best_val = float("inf")
+	best_epoch = -1
+	best_ckpt_path = os.path.join(args.save, "best_by_val.ckpt")
+
 	logger.info("Experiment " + str(experimentID))
 	for itr in range(1, num_batches * (args.niters + 1)):
 		optimizer.zero_grad()
@@ -357,7 +379,14 @@ if __name__ == '__main__':
 
 		n_iters_to_viz = 1
 		if itr % (n_iters_to_viz * num_batches) == 0:
+			epoch = itr // num_batches
+
 			with torch.no_grad():
+				val_res = compute_loss_all_batches(
+					model, data_obj["val_dataloader"],
+					args, n_batches=data_obj["n_val_batches"],
+					experimentID=experimentID, device=device,
+					n_traj_samples=3, kl_coef=kl_coef)
 
 				test_res = compute_loss_all_batches(model, 
 					data_obj["test_dataloader"], args,
@@ -365,12 +394,31 @@ if __name__ == '__main__':
 					experimentID = experimentID,
 					device = device,
 					n_traj_samples = 3, kl_coef = kl_coef)
+				
+				val_mse = val_res["mse"].item()
+				test_mse = test_res["mse"].item()
+
+				if val_mse < best_val_mse:
+					best_val_mse = val_mse
+					best_test_mse_at_best_val = test_mse
+					best_epoch = epoch
+
+					torch.save({
+						"args": args,
+						"state_dict": model.state_dict(),
+						"best_val_mse": best_val_mse,
+						"test_mse_at_best_val": best_test_mse_at_best_val,
+						"best_epoch": best_epoch,
+					}, best_ckpt_path)
 
 				message = (
-					f"Epoch {itr // num_batches:04d} | "
+					f"Epoch {epoch:04d} | "
+					f"val_mse {val_mse:.4f} | "
 					f"test_loss {test_res['loss'].item():.4f} | "
 					f"test_ll {test_res['likelihood'].item():.4f} | "
-					f"test_mse {test_res['mse'].item():.4f} | "
+					f"test_mse {test_mse:.4f} | "
+					f"best_val_mse {best_val_mse:.4f} | "
+					f"test_mse_at_best_val {best_test_mse_at_best_val:.4f} | "
 					f"kl {test_res['kl_first_p'].item():.4f} | "
 					f"fp_std {test_res['std_first_p'].item():.4f} | "
 					f"train_loss {train_res['loss'].item():.4f} | "
@@ -420,12 +468,12 @@ if __name__ == '__main__':
 	}, ckpt_path)
 
 	if args.spiral:
-				test_dict = utils.get_next_batch(data_obj["test_dataloader"])
-				plot_spiral_extrapolation(
-					test_dict, 
-					model,
-					epoch=args.niters, 
-					experimentID=experimentID, 
-					save_dir=os.path.join(args.save)
-				)
+		test_dict = utils.get_next_batch(data_obj["test_dataloader"])
+		plot_spiral_extrapolation(
+			test_dict, 
+			model,
+			epoch=args.niters, 
+			experimentID=experimentID, 
+			save_dir=os.path.join(args.save)
+		)
 

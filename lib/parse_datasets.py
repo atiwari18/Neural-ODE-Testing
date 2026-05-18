@@ -238,8 +238,16 @@ def parse_datasets(args, device):
 		input_dim = full_data.size(-1)
 
 		# Split train/test at the sample level
-		train_full, test_full = utils.split_train_test(full_data, train_fraq=0.8)
-		train_obs, test_obs = utils.split_train_test(observed_data, train_fraq=0.8)
+		n_train = int(0.7 * n_samples)
+		n_val = int(0.15 * n_samples)
+
+		train_full = full_data[:n_train]
+		val_full = full_data[n_train:n_train + n_val]
+		test_full = full_data[n_train + n_val:]
+
+		train_obs = observed_data[:n_train]
+		val_obs = observed_data[n_train:n_train + n_val]
+		test_obs = observed_data[n_train + n_val:]
 
 		class SpiralDataset(torch.utils.data.Dataset):
 			def __init__(self, observed, full):
@@ -268,6 +276,7 @@ def parse_datasets(args, device):
 			}
 
 		train_dataset = SpiralDataset(train_obs, train_full)
+		val_dataset = SpiralDataset(val_obs, val_full)
 		test_dataset = SpiralDataset(test_obs, test_full)
 
 		batch_size = min(args.batch_size, args.n)
@@ -279,6 +288,13 @@ def parse_datasets(args, device):
 			collate_fn=lambda batch: spiral_collate_fn(batch, data_type="train"),
 		)
 
+		val_dataloader = DataLoader(
+			val_dataset,
+			batch_size=len(val_dataset),
+			shuffle=False,
+			collate_fn=lambda batch: spiral_collate_fn(batch, data_type="val"),
+		)
+
 		test_dataloader = DataLoader(
 			test_dataset,
 			batch_size=len(test_dataset),
@@ -288,9 +304,11 @@ def parse_datasets(args, device):
 
 		data_objects = {
 			"train_dataloader": utils.inf_generator(train_dataloader),
+			"val_dataloader": utils.inf_generator(val_dataloader),
 			"test_dataloader": utils.inf_generator(test_dataloader),
 			"input_dim": input_dim,
 			"n_train_batches": len(train_dataloader),
+			"n_val_batches": len(val_dataloader),
 			"n_test_batches": len(test_dataloader),
 		}
 
