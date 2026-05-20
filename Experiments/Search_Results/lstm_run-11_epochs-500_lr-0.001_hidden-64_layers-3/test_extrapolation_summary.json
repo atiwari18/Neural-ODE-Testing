@@ -1,0 +1,8 @@
+{
+  "n_test_samples": 150,
+  "mean_test_extrap_mse": 12.226479450325133,
+  "median_test_extrap_mse": 0.03794504329562187,
+  "std_test_extrap_mse": 16.344747406264876,
+  "min_test_extrap_mse": 0.0001567587605677545,
+  "max_test_extrap_mse": 43.58510971069336
+}

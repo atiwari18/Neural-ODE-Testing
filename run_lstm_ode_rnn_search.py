@@ -11,7 +11,7 @@ EXPERIMENTS_DIR = ROOT_DIR / "Experiments"
 LSTM_SCRIPT = EXPERIMENTS_DIR / "lstm_spiral_experiment.py"
 ODE_RNN_SCRIPT = EXPERIMENTS_DIR / "run_models.py"
 
-RESULTS_DIR = ROOT_DIR / "Experiments" / "Uniform_Search_Results"
+RESULTS_DIR = ROOT_DIR / "Experiments" / "Search_Results"
 SHARED_SPIRAL_PATH = ROOT_DIR / "Experiments" / "shared_spiral_dataset_scoring_pi.pt"
 
 LSTM_GRID = [
