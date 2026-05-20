@@ -104,7 +104,13 @@ utils.makedirs(args.save)
 
 #Plotting Code for Spirals
 #TODO: Integrate with larger Visualize class in @plotting.py
-def plot_spiral_extrapolation(test_dict, model, epoch, experimentID, save_dir="ODE-RNN_Results/spiral_plots", plot_indices=None):
+
+def get_plot_grid(n_plot):
+    n_cols = int(np.ceil(np.sqrt(n_plot)))
+    n_rows = int(np.ceil(n_plot / n_cols))
+    return n_rows, n_cols
+
+def plot_spiral_extrapolation(test_dict, model, epoch, experimentID, save_dir="ODE-RNN_Results/spiral_plots", save_summary=False, plot_indices=None):
 	os.makedirs(save_dir, exist_ok=True)
 
 	if plot_indices is None:
@@ -142,20 +148,22 @@ def plot_spiral_extrapolation(test_dict, model, epoch, experimentID, save_dir="O
     "max_test_extrap_mse": float(full_mse.max()),
 	}
 
-	summary_path = os.path.join(save_dir, "test_extrapolation_summary.json")
-	with open(summary_path, "w") as f:
-		import json
-		json.dump(summary, f, indent=2)
+	if save_summary:
+		summary_path = os.path.join(save_dir, "test_extrapolation_summary.json")
+		with open(summary_path, "w") as f:
+			import json
+			json.dump(summary, f, indent=2)
 
-	print(f"Saved all-test extrapolation summary to {summary_path}")
+		print(f"Saved all-test extrapolation summary to {summary_path}")
 
 	#
 	valid_indices = [idx for idx in plot_indices if idx < observed_data.shape[0]]
 	n_plot = len(valid_indices)
 
 	#n_plot = min(n_plot, observed_data.shape[0])
-	fig, axes = plt.subplots(2, 2, figsize=(10, 10))
-	axes = axes.flatten()
+	n_rows, n_cols = get_plot_grid(n_plot)
+	fig, axes = plt.subplots(n_rows, n_cols, figsize=(4 * n_cols, 4 * n_rows))
+	axes = np.array(axes).reshape(-1)
 
 	for panel_i, sample_i in enumerate(valid_indices):
 		ax = axes[panel_i]

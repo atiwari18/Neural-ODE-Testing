@@ -262,6 +262,11 @@ def split_train_val_test(full_data, observed_data, train_frac=0.7, val_frac=0.15
 
     return train_full, val_full, test_full, train_obs, val_obs, test_obs
 
+def get_plot_grid(n_plot):
+    n_cols = int(np.ceil(np.sqrt(n_plot)))
+    n_rows = int(np.ceil(n_plot / n_cols))
+    return n_rows, n_cols
+
 def plot_rollouts(model, test_dataset, device, epoch, save_dir, plot_indices=None):
     os.makedirs(save_dir, exist_ok=True)
     model.eval()
@@ -300,8 +305,9 @@ def plot_rollouts(model, test_dataset, device, epoch, save_dir, plot_indices=Non
     full_traj = full_traj.cpu().numpy()
     future_pred = future_pred.cpu().numpy()
 
-    fig, axes = plt.subplots(2, 2, figsize=(10, 10))
-    axes = axes.flatten()
+    n_rows, n_cols = get_plot_grid(n_plot)
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(4 * n_cols, 4 * n_rows))
+    axes = np.array(axes).reshape(-1)
 
     for panel_i, sample_i in enumerate(valid_indices):
         ax = axes[panel_i]
