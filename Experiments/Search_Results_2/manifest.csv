@@ -1,0 +1,4 @@
+model,run,label,epochs_or_niters,lr,hidden_dim_or_latents,num_layers,teacher_forcing,rec_dims,units,gru_units,save_dir
+ode-rnn,1,ode_rnn_run-01_niters-3000_lr-0.01_latents-8_rec-30_units-64_gru-64,3000,0.01,8,,,30,64,64,/home/atiwari/Annealing_Experiment/Experiments/Search_Results_2/ode_rnn_run-01_niters-3000_lr-0.01_latents-8_rec-30_units-64_gru-64
+ode-rnn,2,ode_rnn_run-02_niters-3000_lr-0.01_latents-6_rec-30_units-100_gru-100,3000,0.01,6,,,30,100,100,/home/atiwari/Annealing_Experiment/Experiments/Search_Results_2/ode_rnn_run-02_niters-3000_lr-0.01_latents-6_rec-30_units-100_gru-100
+ode-rnn,3,ode_rnn_run-03_niters-3000_lr-0.01_latents-8_rec-30_units-100_gru-100,3000,0.01,8,,,30,100,100,/home/atiwari/Annealing_Experiment/Experiments/Search_Results_2/ode_rnn_run-03_niters-3000_lr-0.01_latents-8_rec-30_units-100_gru-100
