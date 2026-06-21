@@ -89,7 +89,7 @@ class SyntheticKTDataset(Dataset):
 
         return x, target_q, target_r
     
-def split_train_test(dataset, train_size=2000):
+def split_train_test_syndkt(dataset, train_size=2000):
     train_indices = list(range(train_size))
     test_indices = list(range(train_size, len(dataset)))
 
