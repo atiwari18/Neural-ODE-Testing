@@ -1,5 +1,7 @@
 import torch
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, Subset
+import numpy as np
+import torch.nn.functional as F
 
 #Converts trajectories into input/target sequences
 def generate_lstm_dataset(trajectories, seq_len=20):
@@ -56,3 +58,42 @@ class SpiralSequenceDataset(Dataset):
         future = full_traj[self.last_obs_dense_idx + 1:]
 
         return obs_with_dt, future, full_traj
+    
+class SyntheticKTDataset(Dataset):
+    def __init__(self, csv_path):
+        responses = np.loadtxt(csv_path, delimiter=",", dtype=np.int64)
+
+        if responses.ndim == 1:
+            responses = responses[None, :]
+
+        self.responses = torch.tensor(responses, dtype=torch.int)
+        self.num_students, self.num_questions = self.responses.shape
+
+    def __len__(self):
+        return self.num_students
+    
+    def __getitem__(self, index):
+        responses = self.responses[index]
+        question_ids = torch.arange(self.num_questions)
+
+        input_q = question_ids[:-1]
+        input_r = responses[:-1]
+
+        target_q = question_ids[1:]
+        target_r = responses[1:]
+
+        #Classic DKT encoding
+        interaction_ids = input_q + input_r * self.num_questions
+
+        x = F.one_hot(interaction_ids, num_classes=2 * self.num_questions)
+
+        return x, target_q, target_r
+    
+def split_train_test(dataset, train_size=2000):
+    train_indices = list(range(train_size))
+    test_indices = list(range(train_size, len(dataset)))
+
+    train_dataset = Subset(dataset, train_indices)
+    test_dataset = Subset(dataset, test_indices)
+
+    return train_dataset, test_dataset
