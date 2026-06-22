@@ -25,7 +25,8 @@ def parse_args():
     parser.add_argument("--concepts", nargs="+", type=int, default=[2, 5])
     parser.add_argument("--versions", nargs="+", type=int, default=list(range(20)))
 
-    parser.add_argument("--train-size", type=int, default=2000)
+    parser.add_argument("--train-size", type=int, default=1600)
+    parser.add_argument("--val-size", type=int, default=400)
     parser.add_argument("--epochs", type=int, default=50)
     parser.add_argument("--batch-size", type=int, default=64)
     parser.add_argument("--hidden-dim", type=int, default=100)
@@ -42,6 +43,7 @@ def build_command(args, csv_path, run_dir):
         "--csv-path", str(csv_path),
         "--save-dir", str(run_dir),
         "--train-size", str(args.train_size),
+        "--val-size", str(args.val_size),
         "--epochs", str(args.epochs),
         "--batch-size", str(args.batch_size),
         "--hidden-dim", str(args.hidden_dim),
@@ -167,12 +169,21 @@ if __name__ == "__main__":
                     "concepts": concepts,
                     "version": version,
                     "label": label,
+
+                    "best_epoch": metrics["best_epoch"],
+
+                    "best_train_loss": metrics["best_train_loss"],
+                    "best_train_accuracy": metrics["best_train_accuracy"],
+                    "best_train_auc": metrics["best_train_auc"],
+
+                    "best_val_loss": metrics["best_val_loss"],
+                    "best_val_accuracy": metrics["best_val_accuracy"],
+                    "best_val_auc": metrics["best_val_auc"],
+
                     "test_loss": metrics["test_loss"],
                     "test_accuracy": metrics["test_accuracy"],
                     "test_auc": metrics["test_auc"],
-                    "final_train_loss": metrics["final_train_loss"],
-                    "final_train_accuracy": metrics["final_train_accuracy"],
-                    "final_train_auc": metrics["final_train_auc"],
+
                     "save_dir": run_dir,
                 })
 
