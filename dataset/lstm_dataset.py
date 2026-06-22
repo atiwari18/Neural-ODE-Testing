@@ -66,7 +66,7 @@ class SyntheticKTDataset(Dataset):
         if responses.ndim == 1:
             responses = responses[None, :]
 
-        self.responses = torch.tensor(responses, dtype=torch.int)
+        self.responses = torch.tensor(responses, dtype=torch.long)
         self.num_students, self.num_questions = self.responses.shape
 
     def __len__(self):
@@ -74,18 +74,18 @@ class SyntheticKTDataset(Dataset):
     
     def __getitem__(self, index):
         responses = self.responses[index]
-        question_ids = torch.arange(self.num_questions)
+        question_ids = torch.arange(self.num_questions, dtype=torch.long)
 
         input_q = question_ids[:-1]
         input_r = responses[:-1]
 
         target_q = question_ids[1:]
-        target_r = responses[1:]
+        target_r = responses[1:].float()
 
         #Classic DKT encoding
         interaction_ids = input_q + input_r * self.num_questions
 
-        x = F.one_hot(interaction_ids, num_classes=2 * self.num_questions)
+        x = F.one_hot(interaction_ids, num_classes=2 * self.num_questions).float()
 
         return x, target_q, target_r
     
