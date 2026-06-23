@@ -278,16 +278,43 @@ def linspace_vector(start, end, n_points):
 	size = np.prod(start.size())
 
 	assert(start.size() == end.size())
+
+	device = start.device
+	dtype = start.dtype
+
 	if size == 1:
 		# start and end are 1d-tensors
-		res = torch.linspace(start, end, n_points)
+		res = torch.linspace(
+			start.item(),
+			end.item(),
+			n_points,
+			device=device,
+			dtype=dtype,
+		)
 	else:
-		# start and end are vectors
-		res = torch.Tensor()
+		res = torch.empty(
+			0,
+			device=device,
+			dtype=dtype,
+		)
+
 		for i in range(0, start.size(0)):
-			res = torch.cat((res, 
-				torch.linspace(start[i], end[i], n_points)),0)
+			res = torch.cat(
+				(
+					res,
+					torch.linspace(
+						start[i].item(),
+						end[i].item(),
+						n_points,
+						device=device,
+						dtype=dtype,
+					),
+				),
+				0,
+			)
+
 		res = torch.t(res.reshape(start.size(0), n_points))
+
 	return res
 
 def reverse(tensor):

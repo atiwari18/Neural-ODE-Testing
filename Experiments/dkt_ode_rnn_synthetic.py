@@ -39,7 +39,7 @@ class ODE_RNN_DKT(nn.Module):
         ode_func = ODEFunc(
             input_dim = self.input_dim, 
             latent_dim=latent_dim, 
-            ode_func=ode_func_net,
+            ode_func_net=ode_func_net,
             device=device,
         )
 
