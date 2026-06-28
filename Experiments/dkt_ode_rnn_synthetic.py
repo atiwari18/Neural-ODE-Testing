@@ -11,7 +11,7 @@ from sklearn.metrics import accuracy_score, roc_auc_score
 from torch.utils.data import DataLoader
 
 import lib.utils as utils
-from dataset.lstm_dataset import SyntheticKTDataset, split_train_val_test_syndkt
+from dataset.lstm_dataset import SyntheticKTDataset, split_train_val_test_syndkt, make_synthetic_kt_timesteps
 from lib.diffeq_solver import DiffeqSolver
 from lib.encoder_decoder import Encoder_z0_ODE_RNN
 from lib.ode_func import ODEFunc
@@ -110,7 +110,33 @@ def parse_args():
 
     parser.add_argument("--seed", type=int, default=32)
 
+    #Irregular 
+    parser.add_argument("--time-steps-path", type=str, default=None)
+    parser.add_argument("--irregular-timestamps", action="store_true")
+    parser.add_argument("--irregular-window-time", type=float, default=None)
+    parser.add_argument("--irregular-n-trials", type=int, default=100)
+
     return parser.parse_args()
+
+def load_or_create_time_steps(args, num_input_steps, device):
+    if args.time_steps_path is not None:
+        payload = torch.load(args.time_steps_path, map_location="cpu")
+
+        if isinstance(payload, dict):
+            time_steps = payload["time_steps"]
+        else:
+            time_steps = payload
+
+        return time_steps.float().to(device)
+
+    time_steps = make_synthetic_kt_timesteps(
+        num_input_steps=num_input_steps,
+        irregular=args.irregular_timestamps,
+        irregular_window_time=args.irregular_window_time,
+        n_trials=args.irregular_n_trials,
+    )
+
+    return time_steps.float().to(device)
 
 def save_train_log(log_rows, save_dir):
     log_path = save_dir / "train_log.csv"
@@ -279,9 +305,14 @@ if __name__ == '__main__':
 
     #The synthetic KT data has no real timestamps, so we use question index time.
     #Inputs have length 49 because q0..q48 predict q1..q49.
-    time_steps = torch.arange(
-        dataset.num_questions - 1,
-        dtype=torch.float32,
+    if args.time_steps_path is None:
+        time_steps_path = save_dir / "synthetic_kt_time_steps.pt"
+    else:
+        time_steps_path = Path(args.time_steps_path)
+
+    time_steps = load_or_create_time_steps(
+        args=args,
+        num_input_steps=dataset.num_questions - 1,
         device=device,
     )
 
@@ -422,6 +453,12 @@ if __name__ == '__main__':
         "train_log_path": str(train_log_path),
         "loss_plot_path": str(loss_plot_path),
         "auc_plot_path": str(auc_plot_path),
+
+        "time_steps_path": str(time_steps_path),
+        "irregular_timestamps": args.irregular_timestamps,
+        "irregular_window_time": args.irregular_window_time,
+        "irregular_n_trials": args.irregular_n_trials,
+        "time_steps": time_steps.detach().cpu().tolist(),
     }
 
     metrics_path = save_dir / "final_metrics.json"

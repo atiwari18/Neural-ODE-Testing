@@ -108,3 +108,42 @@ def split_train_val_test_syndkt(dataset, train_size=1600, val_size=400):
     test_dataset = Subset(dataset, test_indices)
 
     return train_dataset, val_dataset, test_dataset
+
+def make_synthetic_kt_timesteps(num_input_steps, irregular=False, irregular_window_time=None, n_trials=100):
+    if not irregular:
+        return torch.arange(num_input_steps, dtype=torch.float32)
+    
+    from lib.generate_spirals import choose_best_offset, irregularity_score
+
+    if irregular_window_time is None:
+        irregular_window_time = float(num_input_steps - 1)
+
+    #Dense canddiate time grid. Make it much denser than the # of question interations,
+    #then choose the num_input_steps irregular offsets
+    dense_count = max(num_input_steps * 20, num_input_steps + 1)
+
+    full_local_ts = np.linspace(
+        0.0,
+        float(irregular_window_time),
+        dense_count,
+        dtype=np.float32
+    )
+
+    candidate_idx = np.arange(dense_count)
+
+    observed_offsets, best_score = choose_best_offset(
+        candidate_idx=candidate_idx,
+        obs_len=num_input_steps,
+        full_local_ts=full_local_ts,
+        n_trials=n_trials
+    )
+
+    #Make sure that the first timestep starts at zero.
+    observed_timesteps = full_local_ts[observed_offsets]
+    observed_timesteps = observed_timesteps - observed_timesteps[0]
+
+    score = float(np.ravel(irregularity_score(observed_timesteps))[0])
+
+    print(f"Selected synthetic KT irregular timestamps with score {score:.6f}")
+
+    return torch.tensor(observed_timesteps, dtype=torch.float32)
