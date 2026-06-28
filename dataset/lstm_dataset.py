@@ -66,7 +66,7 @@ class SyntheticKTDataset(Dataset):
         if responses.ndim == 1:
             responses = responses[None, :]
 
-        self.responses = torch.tensor(responses, dtype=torch.int)
+        self.responses = torch.tensor(responses, dtype=torch.long)
         self.num_students, self.num_questions = self.responses.shape
 
     def __len__(self):
@@ -74,26 +74,76 @@ class SyntheticKTDataset(Dataset):
     
     def __getitem__(self, index):
         responses = self.responses[index]
-        question_ids = torch.arange(self.num_questions)
+        question_ids = torch.arange(self.num_questions, dtype=torch.long)
 
         input_q = question_ids[:-1]
         input_r = responses[:-1]
 
         target_q = question_ids[1:]
-        target_r = responses[1:]
+        target_r = responses[1:].float()
 
         #Classic DKT encoding
         interaction_ids = input_q + input_r * self.num_questions
 
-        x = F.one_hot(interaction_ids, num_classes=2 * self.num_questions)
+        x = F.one_hot(interaction_ids, num_classes=2 * self.num_questions).float()
 
         return x, target_q, target_r
     
-def split_train_test(dataset, train_size=2000):
-    train_indices = list(range(train_size))
-    test_indices = list(range(train_size, len(dataset)))
+def split_train_val_test_syndkt(dataset, train_size=1600, val_size=400):
+    train_start = 0
+    train_end = train_size
+
+    val_start = train_end
+    val_end = train_end + val_size
+
+    test_start = val_end
+    test_end = len(dataset)
+
+    train_indices = list(range(train_start, train_end))
+    val_indices = list(range(val_start, val_end))
+    test_indices = list(range(test_start, test_end))
 
     train_dataset = Subset(dataset, train_indices)
+    val_dataset = Subset(dataset, val_indices)
     test_dataset = Subset(dataset, test_indices)
 
-    return train_dataset, test_dataset
+    return train_dataset, val_dataset, test_dataset
+
+def make_synthetic_kt_timesteps(num_input_steps, irregular=False, irregular_window_time=None, n_trials=100):
+    if not irregular:
+        return torch.arange(num_input_steps, dtype=torch.float32)
+    
+    from lib.generate_spirals import choose_best_offset, irregularity_score
+
+    if irregular_window_time is None:
+        irregular_window_time = float(num_input_steps - 1)
+
+    #Dense canddiate time grid. Make it much denser than the # of question interations,
+    #then choose the num_input_steps irregular offsets
+    dense_count = max(num_input_steps * 20, num_input_steps + 1)
+
+    full_local_ts = np.linspace(
+        0.0,
+        float(irregular_window_time),
+        dense_count,
+        dtype=np.float32
+    )
+
+    candidate_idx = np.arange(dense_count)
+
+    observed_offsets, best_score = choose_best_offset(
+        candidate_idx=candidate_idx,
+        obs_len=num_input_steps,
+        full_local_ts=full_local_ts,
+        n_trials=n_trials
+    )
+
+    #Make sure that the first timestep starts at zero.
+    observed_timesteps = full_local_ts[observed_offsets]
+    observed_timesteps = observed_timesteps - observed_timesteps[0]
+
+    score = float(np.ravel(irregularity_score(observed_timesteps))[0])
+
+    print(f"Selected synthetic KT irregular timestamps with score {score:.6f}")
+
+    return torch.tensor(observed_timesteps, dtype=torch.float32)
