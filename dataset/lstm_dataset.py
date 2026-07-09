@@ -60,7 +60,7 @@ class SpiralSequenceDataset(Dataset):
         return obs_with_dt, future, full_traj
     
 class SyntheticKTDataset(Dataset):
-    def __init__(self, csv_path):
+    def __init__(self, csv_path, time_steps=None, include_delta_t=False):
         responses = np.loadtxt(csv_path, delimiter=",", dtype=np.int64)
 
         if responses.ndim == 1:
@@ -68,6 +68,29 @@ class SyntheticKTDataset(Dataset):
 
         self.responses = torch.tensor(responses, dtype=torch.long)
         self.num_students, self.num_questions = self.responses.shape
+        self.include_delta_t = include_delta_t
+
+        if self.include_delta_t:
+            if time_steps is None:
+                raise ValueError("Time stemps must be provided.")
+            
+            time_steps = torch.as_tensor(time_steps, dtype=torch.float32)
+
+            expected_len = self.num_questions - 1
+
+            if time_steps.numel() != expected_len:
+                raise ValueError(
+                    f"time_steps must have length {expected_len}, "
+                    f"but got {time_steps.numel()}.")
+            
+            delta_t = time_steps[1:] - time_steps[:-1]
+            delta_t = torch.cat([torch.zeros(1), delta_t], dim=0)
+
+            self.time_steps = time_steps
+            self.delta_t = delta_t.unsqueeze(-1)
+        else:
+            self.time_steps = None
+            self.delta_t = None
 
     def __len__(self):
         return self.num_students
@@ -86,6 +109,9 @@ class SyntheticKTDataset(Dataset):
         interaction_ids = input_q + input_r * self.num_questions
 
         x = F.one_hot(interaction_ids, num_classes=2 * self.num_questions).float()
+
+        if self.include_delta_t:
+            x = torch.cat([x, self.delta_t], dim=-1)
 
         return x, target_q, target_r
     
