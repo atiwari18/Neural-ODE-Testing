@@ -10,14 +10,14 @@ import torch.nn as nn
 from sklearn.metrics import roc_auc_score, accuracy_score
 
 from models.lstm import LSTM
-from dataset.lstm_dataset import SyntheticKTDataset, split_train_val_test_syndkt
+from dataset.lstm_dataset import SyntheticKTDataset, split_train_val_test_syndkt, make_synthetic_kt_timesteps
 
 def parse_args():
     parser = argparse.ArgumentParser("LSTM Synthetic DKT")
     parser.add_argument("--csv-path", type=str, required=True)
     parser.add_argument("--save-dir", type=str, required=True)
 
-    parser.add_argument("--train-size", type=int, default=2000)
+    parser.add_argument("--train-size", type=int, default=1600)
     parser.add_argument("--val-size", type=int, default=400)
     parser.add_argument("--epochs", type=int, default=50)
     parser.add_argument("--batch-size", type=int, default=64)
@@ -26,7 +26,32 @@ def parse_args():
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--seed", type=int, default=32)
 
+    parser.add_argument("--include-delta-t", action="store_true")
+    parser.add_argument("--irregular-timestamps", action="store_true")
+    parser.add_argument("--irregular-window-time", type=float, default=None)
+    parser.add_argument("--irregular-n-trials", type=int, default=100)
+    parser.add_argument("--time-steps-path", type=str, default=None)
+
     return parser.parse_args()
+
+def load_or_create_time_steps(args, num_input_steps):
+    if not args.include_delta_t:
+        return None
+    
+    if args.time_steps_path is not None:
+        payload = torch.load(args.time_steps_path, map_location="cpu")
+
+        if isinstance(payload, dict):
+            return payload["time_steps"].float()
+        
+        return payload.float()
+    
+    return make_synthetic_kt_timesteps(
+        num_input_steps=num_input_steps, 
+        irregular=args.irregular_timestamps, 
+        irregular_window_time=args.irregular_window_time,
+        n_trials=args.irregular_n_trials,
+    ).float()
 
 def save_training_plot(log_rows, save_dir):
     epochs = [row["epoch"] for row in log_rows]
@@ -103,9 +128,9 @@ def run_epoch(model, loader, criterion, device, optimizer=None):
     all_targets = []
 
     for x, target_q, target_r in loader:
-        x = x.to(device)                    # [batch, 49, 100]
-        target_q = target_q.to(device)      # [batch, 49]
-        target_r = target_r.to(device)
+        x = x.float().to(device)                    # [batch, 49, 100]
+        target_q = target_q.long().to(device)      # [batch, 49]
+        target_r = target_r.float().to(device)
 
         output, _ = model(x)
 
@@ -157,7 +182,18 @@ if __name__ == '__main__':
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    dataset = SyntheticKTDataset(args.csv_path)
+    #dataset = SyntheticKTDataset(args.csv_path)
+    time_steps = load_or_create_time_steps(
+        args=args,
+        num_input_steps=49,
+    )
+
+    dataset = SyntheticKTDataset(
+        args.csv_path,
+        time_steps=time_steps,
+        include_delta_t=args.include_delta_t,
+    )
+
     train_dataset, val_dataset, test_dataset = split_train_val_test_syndkt(
         dataset,
         train_size=args.train_size,
@@ -182,8 +218,13 @@ if __name__ == '__main__':
         shuffle=False,
     )
 
+    #input dimensions
+    input_dim = 2 * dataset.num_questions
+    if args.include_delta_t:
+        input_dim += 1
+
     model = LSTM(
-        input_dim=2 * dataset.num_questions,
+        input_dim=input_dim,
         hidden_dim=args.hidden_dim,
         num_layers=args.num_layers,
         output_dim=dataset.num_questions,
@@ -302,6 +343,14 @@ if __name__ == '__main__':
         "train_log_path": str(train_log_path),
         "loss_plot_path": str(loss_plot_path),
         "auc_plot_path": str(auc_plot_path),
+
+        "include_delta_t": args.include_delta_t,
+        "irregular_timestamps": args.irregular_timestamps,
+        "irregular_window_time": args.irregular_window_time,
+        "irregular_n_trials": args.irregular_n_trials,
+        "time_steps_path": args.time_steps_path,
+        "time_steps": time_steps.tolist() if time_steps is not None else None,
+        "input_dim": input_dim,
     }
 
     metrics_path = save_dir / "final_metrics.json"

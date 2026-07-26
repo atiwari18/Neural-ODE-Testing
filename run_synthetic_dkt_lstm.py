@@ -7,6 +7,8 @@ import sys
 from pathlib import Path
 
 import numpy as np
+import torch
+from dataset.lstm_dataset import make_synthetic_kt_timesteps
 
 
 ROOT_DIR = Path(__file__).resolve().parent
@@ -14,7 +16,7 @@ EXPERIMENTS_DIR = ROOT_DIR / "Experiments"
 RUN_SCRIPT = EXPERIMENTS_DIR / "dkt_lstm_synthetic.py"
 
 DATA_DIR = ROOT_DIR / "syntheticKT"
-RESULTS_DIR = ROOT_DIR / "SyntheticDKTResults" / "LSTM_Results"
+RESULTS_DIR = ROOT_DIR / "SyntheticDKTResults" / "LSTM_Results_Irregular_48"
 
 
 def parse_args():
@@ -33,11 +35,73 @@ def parse_args():
     parser.add_argument("--num-layers", type=int, default=1)
     parser.add_argument("--lr", type=float, default=1e-2)
 
+    parser.add_argument("--include-delta-t", action="store_true")
+    parser.add_argument("--irregular-timestamps", action="store_true")
+    parser.add_argument("--irregular-window-time", type=float, default=None)
+    parser.add_argument("--irregular-n-trials", type=int, default=100)
+    parser.add_argument("--time-steps-path", type=str, default=None)
+    parser.add_argument("--num-questions", type=int, default=50)
+
     return parser.parse_args()
 
+def get_or_create_time_steps_file(args):
+    if not args.include_delta_t:
+        return None
 
-def build_command(args, csv_path, run_dir):
-    return [
+    if args.time_steps_path is not None:
+        return Path(args.time_steps_path)
+
+    if not args.irregular_timestamps:
+        return None
+
+    window = args.irregular_window_time
+    if window is None:
+        window = float(args.num_questions - 2)
+
+    window_label = str(window).replace(".", "p")
+
+    path = (
+        EXPERIMENTS_DIR
+        / (
+            f"shared_synthetic_kt_irregular_times"
+            f"_q{args.num_questions}"
+            f"_window-{window_label}"
+            f"_seed-{args.seed}.pt"
+        )
+    )
+
+    if path.exists():
+        print(f"Using existing shared time steps: {path}")
+        return path
+
+    np.random.seed(args.seed)
+
+    time_steps = make_synthetic_kt_timesteps(
+        num_input_steps=args.num_questions - 1,
+        irregular=True,
+        irregular_window_time=args.irregular_window_time,
+        n_trials=args.irregular_n_trials,
+    )
+
+    payload = {
+        "time_steps": time_steps,
+        "num_questions": args.num_questions,
+        "num_input_steps": args.num_questions - 1,
+        "irregular": True,
+        "irregular_window_time": args.irregular_window_time,
+        "irregular_n_trials": args.irregular_n_trials,
+        "seed": args.seed,
+    }
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    torch.save(payload, path)
+
+    print(f"Saved shared irregular time steps: {path}")
+
+    return path
+
+def build_command(args, csv_path, run_dir, time_steps_path=None):
+    cmd = [
         sys.executable,
         str(RUN_SCRIPT),
         "--csv-path", str(csv_path),
@@ -50,7 +114,22 @@ def build_command(args, csv_path, run_dir):
         "--num-layers", str(args.num_layers),
         "--lr", str(args.lr),
         "--seed", str(args.seed),
+        "--irregular-n-trials", str(args.irregular_n_trials),
     ]
+
+    if args.include_delta_t:
+        cmd.append("--include-delta-t")
+
+    if args.irregular_timestamps:
+        cmd.append("--irregular-timestamps")
+
+    if args.irregular_window_time is not None:
+        cmd.extend(["--irregular-window-time", str(args.irregular_window_time)])
+
+    if time_steps_path is not None:
+        cmd.extend(["--time-steps-path", str(time_steps_path)])
+
+    return cmd
 
 
 def run_command(cmd, cwd, env, dry_run):
@@ -99,6 +178,8 @@ if __name__ == "__main__":
     env = os.environ.copy()
     env["PYTHONPATH"] = str(ROOT_DIR) + os.pathsep + env.get("PYTHONPATH", "")
 
+    time_steps_path = get_or_create_time_steps_file(args)
+
     manifest_rows = []
     result_rows = []
 
@@ -122,9 +203,15 @@ if __name__ == "__main__":
                 print(f"Missing dataset, skipping: {csv_path}")
                 continue
 
+            timing_label = "regular"
+
+            if args.include_delta_t: 
+                timing_label = "delta_t_irregular" if args.irregular_timestamps else "regular"
+
             label = (
                 f"c{concepts}"
                 f"_v{version:02d}"
+                f"_{timing_label}"
                 f"_epochs-{args.epochs}"
                 f"_lr-{args.lr}"
                 f"_hidden-{args.hidden_dim}"
@@ -134,7 +221,7 @@ if __name__ == "__main__":
             run_dir = RESULTS_DIR / label
             run_dir.mkdir(parents=True, exist_ok=True)
 
-            cmd = build_command(args, csv_path, run_dir)
+            cmd = build_command(args, csv_path, run_dir, time_steps_path)
 
             manifest_rows.append({
                 "model": "lstm_dkt",
@@ -150,6 +237,11 @@ if __name__ == "__main__":
                 "batch_size": args.batch_size,
                 "train_size": args.train_size,
                 "seed": args.seed,
+                "include_delta_t": args.include_delta_t,
+                "irregular_timestamps": args.irregular_timestamps,
+                "irregular_window_time": args.irregular_window_time,
+                "irregular_n_trials": args.irregular_n_trials,
+                "time_steps_path": time_steps_path if time_steps_path is not None else "",
             })
 
             print("=" * 80)
@@ -183,6 +275,12 @@ if __name__ == "__main__":
                     "test_loss": metrics["test_loss"],
                     "test_accuracy": metrics["test_accuracy"],
                     "test_auc": metrics["test_auc"],
+
+                    "include_delta_t": metrics.get("include_delta_t", ""),
+                    "irregular_timestamps": metrics.get("irregular_timestamps", ""),
+                    "irregular_window_time": metrics.get("irregular_window_time", ""),
+                    "time_steps_path": metrics.get("time_steps_path", ""),
+                    "input_dim": metrics.get("input_dim", ""),
 
                     "save_dir": run_dir,
                 })
