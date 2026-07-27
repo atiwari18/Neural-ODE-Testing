@@ -390,11 +390,14 @@ if __name__ == '__main__':
 			epoch = itr // num_batches
 
 			with torch.no_grad():
-				val_res = compute_loss_all_batches(
-					model, data_obj["val_dataloader"],
-					args, n_batches=data_obj["n_val_batches"],
-					experimentID=experimentID, device=device,
-					n_traj_samples=3, kl_coef=kl_coef)
+				if "val_dataloader" in data_obj:
+					val_res = compute_loss_all_batches(
+						model, data_obj["val_dataloader"],
+						args, n_batches=data_obj["n_val_batches"],
+						experimentID=experimentID, device=device,
+						n_traj_samples=3, kl_coef=kl_coef)
+				else:
+					val_res = None
 
 				test_res = compute_loss_all_batches(model, 
 					data_obj["test_dataloader"], args,
@@ -403,10 +406,15 @@ if __name__ == '__main__':
 					device = device,
 					n_traj_samples = 3, kl_coef = kl_coef)
 				
-				val_mse = val_res["mse"].item()
+				
 				test_mse = test_res["mse"].item()
 
-				if val_mse < best_val_mse:
+				if val_res is not None:
+					val_mse = val_res["mse"].item()
+				else:
+					val_mse = None
+
+				if val_mse is not None and (val_mse < best_val_mse):
 					best_val_mse = val_mse
 					best_test_mse_at_best_val = test_mse
 					best_epoch = epoch
@@ -419,21 +427,26 @@ if __name__ == '__main__':
 						"best_epoch": best_epoch,
 					}, best_ckpt_path)
 
-				message = (
-					f"Epoch {epoch:04d} | "
-					f"val_mse {val_mse:.4f} | "
-					f"test_loss {test_res['loss'].item():.4f} | "
-					f"test_ll {test_res['likelihood'].item():.4f} | "
-					f"test_mse {test_mse:.4f} | "
-					f"best_val_mse {best_val_mse:.4f} | "
-					f"test_mse_at_best_val {best_test_mse_at_best_val:.4f} | "
-					f"kl {test_res['kl_first_p'].item():.4f} | "
-					f"fp_std {test_res['std_first_p'].item():.4f} | "
-					f"train_loss {train_res['loss'].item():.4f} | "
-					f"kl_coef {kl_coef:.4f}"
-				)
+				message_parts = [f"Epoch {epoch:04d}"]
+
+				if val_res is not None:
+					message_parts.extend([
+						f"val_mse {val_mse:.4f}",
+						f"best_val_mse {best_val_mse:.4f}",
+						f"test_mse_at_best_val {best_test_mse_at_best_val:.4f}",
+					])
+
+				message_parts.extend([
+					f"test_loss {test_res['loss'].item():.4f}",
+					f"test_ll {test_res['likelihood'].item():.4f}",
+					f"test_mse {test_mse:.4f}",
+					f"kl {test_res['kl_first_p'].item():.4f}",
+					f"fp_std {test_res['std_first_p'].item():.4f}",
+					f"train_loss {train_res['loss'].item():.4f}",
+					f"kl_coef {kl_coef:.4f}",
+				])
 		 	
-				logger.info(message)
+				logger.info("|".join(message_parts))
 				
 				if "auc" in test_res:
 					logger.info("Classification AUC (TEST): {:.4f}".format(test_res["auc"]))
