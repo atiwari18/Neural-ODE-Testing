@@ -20,11 +20,20 @@ from torch.utils.data import DataLoader
 from torchvision.datasets.utils import download_url
 from lib.utils import get_device
 
+from urllib.parse import urlsplit
+from tqdm.auto import tqdm
+
+def filename_from_url(url):
+	return os.path.basename(urlsplit(url).path)
+
 # Adapted from: https://github.com/rtqichen/time-series-datasets
 
 # get minimum and maximum for each feature across the whole dataset
 def get_data_min_max(records):
-	device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+	if not records:
+		raise ValueError("Cannot normalize an empty dataset")
+
+	device = records[0][2].device
 
 	data_min, data_max = None, None
 	inf = torch.Tensor([float("Inf")])[0].to(device)
@@ -53,21 +62,46 @@ def get_data_min_max(records):
 			data_min = torch.min(data_min, batch_min)
 			data_max = torch.max(data_max, batch_max)
 
+		#A small dataset subset may contain features that are never observed.
+		#Such features retain the initialization values inf and -inf.
+		invalid_features = (~torch.isfinite(data_min) | ~torch.isfinite(data_max))
+
+		if invalid_features.any():
+			invalid_indices = torch.nonzero(invalid_features, as_tuple=False).flatten().tolist()
+
+			print("Warning: no observations found for feature indices "
+        			f"{invalid_indices}. Using min=0 and max=1 for those "
+        			"masked features."
+    			)
+
+			data_min = data_min.clone()
+			data_max = data_max.clone()
+
+			data_min[invalid_features] = 0.0
+			data_max[invalid_features] = 1.0
+
+		#Avoid division by zero for features whose observed maximum is zero.
+		zero_maximum = data_max == 0
+
+		if zero_maximum.any():
+			data_max = data_max.clone()
+			data_max[zero_maximum] = 1.0
+
 	return data_min, data_max
 
 
 class PhysioNet(object):
 
 	urls = [
-		'https://physionet.org/files/challenge-2012/1.0.0/set-a.tar.gz?download',
-		'https://physionet.org/files/challenge-2012/1.0.0/set-b.tar.gz?download',
+		'https://physionet.org/files/challenge-2012/1.0.0/set-a.tar.gz',
+		'https://physionet.org/files/challenge-2012/1.0.0/set-b.tar.gz',
 	]
 
 	outcome_urls = ['https://physionet.org/files/challenge-2012/1.0.0/Outcomes-a.txt']
 
 	#Ignored: 'Age', 'Gender', 'Height', 'ICUType' as per paper
 	params = [
-		'Weight', 'Albumin', 'ALP', 'ALT', 'AST', 'Bilirubin', 'BUN',
+		'Age', 'Gender', 'Height', 'ICUType', 'Weight', 'Albumin', 'ALP', 'ALT', 'AST', 'Bilirubin', 'BUN',
 		'Cholesterol', 'Creatinine', 'DiasABP', 'FiO2', 'GCS', 'Glucose', 'HCO3', 'HCT', 'HR', 'K', 'Lactate', 'Mg',
 		'MAP', 'MechVent', 'Na', 'NIDiasABP', 'NIMAP', 'NISysABP', 'PaCO2', 'PaO2', 'pH', 'Platelets', 'RespRate',
 		'SaO2', 'SysABP', 'Temp', 'TroponinI', 'TroponinT', 'Urine', 'WBC'
@@ -106,21 +140,20 @@ class PhysioNet(object):
 
 		if n_samples is not None:
 			self.data = self.data[:n_samples]
-			self.labels = self.labels[:n_samples]
 
 
 	def download(self):
 		if self._check_exists():
 			return
 
-		self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+		self.device = torch.device("cpu")
 
 		os.makedirs(self.raw_folder, exist_ok=True)
 		os.makedirs(self.processed_folder, exist_ok=True)
 
 		# Download outcome data
 		for url in self.outcome_urls:
-			filename = url.rpartition('/')[2]
+			filename = filename_from_url(url)
 			download_url(url, self.raw_folder, filename, None)
 
 			txtfile = os.path.join(self.raw_folder, filename)
@@ -133,12 +166,12 @@ class PhysioNet(object):
 					outcomes[record_id] = torch.Tensor(labels).to(self.device)
 
 				torch.save(
-					labels,
-					os.path.join(self.processed_folder, filename.split('.')[0] + '.pt')
+					outcomes,
+					os.path.join(self.processed_folder, "Outcomes-a.pt")
 				)
 
 		for url in self.urls:
-			filename = url.rpartition('/')[2]
+			filename = filename_from_url(url)
 			download_url(url, self.raw_folder, filename, None)
 			tar = tarfile.open(os.path.join(self.raw_folder, filename), "r:gz")
 			tar.extractall(self.raw_folder)
@@ -149,7 +182,18 @@ class PhysioNet(object):
 			dirname = os.path.join(self.raw_folder, filename.split('.')[0])
 			patients = []
 			total = 0
-			for txtfile in os.listdir(dirname):
+
+			patient_files = sorted(
+				filename
+				for filename in os.listdir(dirname)
+				if filename.endswith(".txt")
+			)
+
+			for txtfile in tqdm(
+				patient_files,
+				desc=f"Processing {filename}",
+				unit="patient",
+			):
 				record_id = txtfile.split('.')[0]
 				with open(os.path.join(dirname, txtfile)) as f:
 					lines = f.readlines()
@@ -210,7 +254,7 @@ class PhysioNet(object):
 
 	def _check_exists(self):
 		for url in self.urls:
-			filename = url.rpartition('/')[2]
+			filename = filename_from_url(url)
 
 			if not os.path.exists(
 				os.path.join(self.processed_folder, 
@@ -339,8 +383,17 @@ def variable_time_collate_fn(batch, args, device = torch.device("cpu"), data_typ
 		if labels is not None:
 			combined_labels[b] = labels
 
-	combined_vals, _, _ = utils.normalize_masked_data(combined_vals, combined_mask, 
-		att_min = data_min, att_max = data_max)
+	# combined_vals, _, _ = utils.normalize_masked_data(combined_vals, combined_mask, 
+	# 	att_min = data_min, att_max = data_max)
+
+	if data_min is None or data_max is None:
+		raise ValueError("data_min and data_max must be provided to variable_time_collate_fn")
+
+	#Dataset and normalization stats are on CPU, while the collated model batch may br on CUDA
+	data_min_device = data_min.to(device=combined_vals.device, dtype=combined_vals.dtype)
+	data_max_device = data_max.to(device=combined_vals.device, dtype=combined_vals.dtype).clone()
+
+	combined_vals, _,_ = utils.normalize_masked_data(combined_vals, combined_mask, att_min=data_min_device, att_max=data_max_device)
 
 	if torch.max(combined_tt) != 0.:
 		combined_tt = combined_tt / torch.max(combined_tt)

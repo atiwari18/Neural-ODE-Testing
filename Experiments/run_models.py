@@ -36,6 +36,8 @@ from lib.diffeq_solver import DiffeqSolver
 
 from lib.utils import compute_loss_all_batches
 
+import json
+
 # Generative model for noisy data based on ODE
 parser = argparse.ArgumentParser('Latent ODE')
 parser.add_argument('-n',  type=int, default=100, help="Size of the dataset")
@@ -202,6 +204,19 @@ def plot_spiral_extrapolation(test_dict, model, epoch, experimentID, save_dir="O
 	plt.close(fig)
 
 	print(f"Saved spiral extrapolation plot to {save_path}")
+
+def metric_to_float(value):
+    if value is None:
+        return None
+
+    if isinstance(value, torch.Tensor):
+        if value.numel() != 1:
+            raise ValueError(
+                f"Expected scalar metric, received shape {value.shape}"
+            )
+        return value.detach().cpu().item()
+
+    return float(value)
 
 #####################################################################################################
 
@@ -371,6 +386,7 @@ if __name__ == '__main__':
 
 	logger.info("Experiment " + str(experimentID))
 	for itr in range(1, num_batches * (args.niters + 1)):
+		print("HERE")
 		optimizer.zero_grad()
 		utils.update_learning_rate(optimizer, decay_rate = 0.999, lowest = args.lr / 10)
 
@@ -440,8 +456,8 @@ if __name__ == '__main__':
 					f"test_loss {test_res['loss'].item():.4f}",
 					f"test_ll {test_res['likelihood'].item():.4f}",
 					f"test_mse {test_mse:.4f}",
-					f"kl {test_res['kl_first_p'].item():.4f}",
-					f"fp_std {test_res['std_first_p'].item():.4f}",
+					f"kl {test_res['kl_first_p']:.4f}",
+					f"fp_std {test_res['std_first_p']:.4f}",
 					f"train_loss {train_res['loss'].item():.4f}",
 					f"kl_coef {kl_coef:.4f}",
 				])
@@ -487,6 +503,152 @@ if __name__ == '__main__':
 		'args': args,
 		'state_dict': model.state_dict(),
 	}, ckpt_path)
+
+	#Select model for final evaluation
+	selected_checkpoint = "final"
+
+	has_validation_checkpoint = (
+        "val_dataloader" in data_obj
+        and best_epoch >= 0
+        and os.path.exists(best_ckpt_path)
+    )
+
+	if has_validation_checkpoint:
+		try:
+			selected_state = torch.load(
+                best_ckpt_path,
+                map_location=device,
+                weights_only=False,
+            )
+		except TypeError:
+			selected_state = torch.load(
+                best_ckpt_path,
+                map_location=device,
+            )
+
+		model.load_state_dict(selected_state["state_dict"])
+		selected_checkpoint = "best_by_validation"
+
+	#Final test evaluation
+	model.eval()
+
+	with torch.no_grad():
+		final_test_res = compute_loss_all_batches(
+			model,
+			data_obj["test_dataloader"],
+			args,
+			n_batches=data_obj["n_test_batches"],
+			experimentID=experimentID,
+			device=device,
+			n_traj_samples=3,
+			kl_coef=kl_coef,
+		)
+
+	#identify model type
+	if args.ode_rnn:
+		model_name = "ode_rnn"
+	elif args.latent_ode and args.z0_encoder == "odernn":
+		model_name = "latent_ode_odernn_encoder"
+	else:
+		model_name = "unknown"
+
+	#Saving metrics
+	final_metrics = {
+		"experiment_id": experimentID,
+		"model": model_name,
+		"dataset": args.dataset,
+		"task": (
+			"extrapolation"
+			if args.extrap
+			else "interpolation"
+		),
+		"classification": bool(args.classif),
+		"poisson": bool(args.poisson),
+		"random_seed": args.random_seed,
+		"selected_checkpoint": selected_checkpoint,
+
+		"epochs_completed": args.niters,
+
+		"best_epoch": (
+			best_epoch if best_epoch >= 0 else None
+		),
+
+		"best_val_mse": (
+			best_val_mse
+			if np.isfinite(best_val_mse)
+			else None
+		),
+
+		"test_mse_at_best_val": (
+			best_test_mse_at_best_val
+			if np.isfinite(best_test_mse_at_best_val)
+			else None
+		),
+
+		"test_loss": metric_to_float(
+			final_test_res.get("loss")
+		),
+		"test_likelihood": metric_to_float(
+			final_test_res.get("likelihood")
+		),
+		"test_mse": metric_to_float(
+			final_test_res.get("mse")
+		),
+		"test_kl": metric_to_float(
+			final_test_res.get("kl_first_p")
+		),
+		"test_first_point_std": metric_to_float(
+			final_test_res.get("std_first_p")
+		),
+		"test_poisson_likelihood": metric_to_float(
+			final_test_res.get("pois_likelihood")
+		),
+		"test_ce_loss": metric_to_float(
+			final_test_res.get("ce_loss")
+		),
+		"test_auc": metric_to_float(
+			final_test_res.get("auc")
+		),
+
+		"n_samples_requested": args.n,
+		"batch_size": args.batch_size,
+		"learning_rate": args.lr,
+		"latent_dim": args.latents,
+		"recognition_dim": args.rec_dims,
+		"recognition_layers": args.rec_layers,
+		"generative_layers": args.gen_layers,
+		"units": args.units,
+		"gru_units": args.gru_units,
+		"quantization": args.quantization,
+	}
+
+	test_mse = final_metrics["test_mse"]
+
+	final_metrics["test_mse_x1e3"] = (
+		test_mse * 1000.0
+		if test_mse is not None
+		else None
+	)
+
+	final_metrics_path = os.path.join(
+		args.save,
+		"final_metrics.json",
+	)
+
+	with open(
+		final_metrics_path,
+		"w",
+		encoding="utf-8",
+	) as output_file:
+		json.dump(
+			final_metrics,
+			output_file,
+			indent=2,
+		)
+
+	logger.info(
+		f"Final metrics saved to {final_metrics_path}"
+	)
 
 	if args.spiral:
 		test_dict = utils.get_next_batch(data_obj["test_dataloader"])
