@@ -42,6 +42,28 @@ MODEL_CONFIGS = {
         "gru_units": 50,
         "supports_extrapolation": True,
     },
+
+    "lstm_delta": {
+        "flags": ["--lstm-delta"],
+        "latents": 20,
+        "rec_dims": 40,
+        "rec_layers": 1,
+        "gen_layers": 1,
+        "units": 50,
+        "gru_units": 50,
+        "supports_extrapolation": False,
+    },
+
+    "lstm_delta_vae": {
+        "flags": ["--lstm-delta-vae"],
+        "latents": 20,
+        "rec_dims": 40,
+        "rec_layers": 1,
+        "gen_layers": 1,
+        "units": 50,
+        "gru_units": 50,
+        "supports_extrapolation": True,
+    },
 }
 
 
@@ -56,9 +78,9 @@ def parse_args():
         choices=list(MODEL_CONFIGS),
         default=[
             "ode_rnn",
-            "latent_ode_odernn",
+            "lstm_delta",
             "latent_ode_rnn",
-            "rnn_vae",
+            "lstm_delta_vae",
         ],
     )
 

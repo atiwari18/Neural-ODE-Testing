@@ -4,6 +4,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from torchdiffeq import odeint_adjoint as odeint
 import os
+import lib.utils as utils
+from lib.base_models import Baseline, VAE_Baseline
 
 class LSTM(nn.Module):
     def __init__(self, input_dim, hidden_dim, num_layers, output_dim=2):
@@ -386,3 +388,469 @@ def plot_rollouts(model, test_dataset, device, epoch, save_dir, plot_indices=Non
     plt.close(fig)
 
     print(f"Saved plot to {save_path}")
+
+####################################################################################################
+####################################################################################################
+#Mase aware autoregressive LSTM baseline
+#INPUT: [values, feature_mask, elapsed delta_t]
+class LSTMDeltaT(Baseline):
+    def __init__(self, input_dim, hidden_dim, device, obsrv_std=0.01, n_units=50):
+        super().__init__(
+            input_dim=input_dim,
+            latent_dim=hidden_dim,
+            device=device,
+            obsrv_std=obsrv_std,
+        )
+
+        self.hidden_dim = hidden_dim
+
+        self.lstm_cell = nn.LSTMCell(input_size=input_dim * 2 + 1, hidden_size=hidden_dim)
+
+        self.decoder = nn.Sequential(
+            nn.Linear(hidden_dim, n_units),
+            nn.Tanh(),
+            nn.Linear(n_units, input_dim),
+        )
+
+        utils.init_network_weights(self.decoder)
+
+    def get_reconstruction(
+        self,
+        time_steps_to_predict,
+        data,
+        truth_time_steps,
+        mask=None,
+        n_traj_samples=1,
+        mode=None,
+    ):
+        if mask is None:
+            raise ValueError("LSTMDeltaT requires an observation mask")
+
+        if mode == "extrap":
+            raise ValueError(
+                "Autoregressive LSTMDeltaT is used for "
+                "interpolation only"
+            )
+
+        if (
+            len(time_steps_to_predict) != len(truth_time_steps)
+            or not torch.allclose(
+                time_steps_to_predict,
+                truth_time_steps,
+            )
+        ):
+            raise ValueError(
+                "LSTMDeltaT expects identical observed and "
+                "prediction timelines"
+            )
+
+        batch_size, n_timepoints, _ = data.shape
+        device = data.device
+
+        hidden = torch.zeros(
+            batch_size,
+            self.hidden_dim,
+            device=device,
+        )
+
+        cell = torch.zeros_like(hidden)
+
+        # Time since each patient's previous actual observation.
+        elapsed = torch.zeros(
+            batch_size,
+            1,
+            device=device,
+        )
+
+        hidden_states = []
+
+        for index in range(n_timepoints):
+            if index > 0:
+                shared_delta = (
+                    truth_time_steps[index]
+                    - truth_time_steps[index - 1]
+                )
+
+                elapsed = elapsed + shared_delta
+
+            values_i = data[:, index, :]
+            mask_i = mask[:, index, :]
+
+            has_observation = (
+                mask_i.sum(dim=-1, keepdim=True) > 0
+            ).to(data.dtype)
+
+            lstm_input = torch.cat(
+                [values_i, mask_i, elapsed],
+                dim=-1,
+            )
+
+            proposed_hidden, proposed_cell = self.lstm_cell(
+                lstm_input,
+                (hidden, cell),
+            )
+
+            # Do not update for timestamps belonging only to another
+            # patient in the batch.
+            hidden = (
+                has_observation * proposed_hidden
+                + (1.0 - has_observation) * hidden
+            )
+
+            cell = (
+                has_observation * proposed_cell
+                + (1.0 - has_observation) * cell
+            )
+
+            elapsed = torch.where(
+                has_observation.bool(),
+                torch.zeros_like(elapsed),
+                elapsed,
+            )
+
+            hidden_states.append(hidden)
+
+        hidden_states = torch.stack(hidden_states, dim=1)
+
+        # [1, batch, time, input_dim]
+        outputs = self.decoder(hidden_states).unsqueeze(0)
+
+        # Match the existing autoregressive ODE-RNN convention:
+        # output at t_i is based on state from t_(i-1).
+        outputs = utils.shift_outputs(outputs, first_datapoint=data[:, 0, :])
+
+        zero_std = torch.zeros(1, batch_size, self.hidden_dim, device=device)
+
+        final_hidden = hidden.unsqueeze(0)
+
+        extra_info = {
+            "first_point": (
+                final_hidden,
+                zero_std,
+                final_hidden,
+            )
+        }
+
+        return outputs, extra_info
+
+class LSTMDeltaTVAE(VAE_Baseline):
+    """
+    Variational LSTM encoder-decoder baseline.
+
+    Encoder:
+        masked values + masks + accumulated delta_t
+        -> approximate posterior q(z0 | observations)
+
+    Decoder:
+        sampled z0
+        -> autoregressive LSTM reconstruction/prediction
+    """
+    def __init__(self, input_dim, latent_dim, rec_dims, z0_prior, device, obsrv_std=0.01, n_units=50):
+        super().__init__(
+            input_dim=input_dim,
+            latent_dim=latent_dim,
+            z0_prior=z0_prior,
+            device=device,
+            obsrv_std=obsrv_std,
+        )
+
+        self.rec_dims = rec_dims
+
+        self.encoder_cell = nn.LSTMCell(
+            input_size=input_dim * 2 + 1,
+            hidden_size=rec_dims,
+        )
+
+        self.posterior_net = nn.Sequential(
+            nn.Linear(rec_dims, n_units),
+            nn.Tanh(),
+            nn.Linear(n_units, latent_dim * 2),
+        )
+
+        self.z_to_hidden = nn.Linear(
+            latent_dim,
+            latent_dim,
+        )
+
+        self.z_to_cell = nn.Linear(
+            latent_dim,
+            latent_dim,
+        )
+
+        self.decoder_cell = nn.LSTMCell(
+            input_size=input_dim * 2 + 1,
+            hidden_size=latent_dim,
+        )
+
+        self.output_net = nn.Sequential(
+            nn.Linear(latent_dim, n_units),
+            nn.Tanh(),
+            nn.Linear(n_units, input_dim),
+        )
+
+        utils.init_network_weights(self.posterior_net)
+        utils.init_network_weights(self.output_net)
+
+    def _encode(
+        self,
+        data,
+        mask,
+        time_steps,
+        run_backwards,
+    ):
+        batch_size, n_timepoints, _ = data.shape
+        device = data.device
+
+        hidden = torch.zeros(
+            batch_size,
+            self.rec_dims,
+            device=device,
+        )
+
+        cell = torch.zeros_like(hidden)
+
+        elapsed = torch.zeros(
+            batch_size,
+            1,
+            device=device,
+        )
+
+        if run_backwards:
+            indices = list(range(n_timepoints - 1, -1, -1))
+        else:
+            indices = list(range(n_timepoints))
+
+        previous_time = None
+
+        for index in indices:
+            current_time = time_steps[index]
+
+            if previous_time is not None:
+                elapsed = elapsed + torch.abs(
+                    current_time - previous_time
+                )
+
+            values_i = data[:, index, :]
+            mask_i = mask[:, index, :]
+
+            has_observation = (
+                mask_i.sum(dim=-1, keepdim=True) > 0
+            ).to(data.dtype)
+
+            encoder_input = torch.cat(
+                [values_i, mask_i, elapsed],
+                dim=-1,
+            )
+
+            proposed_hidden, proposed_cell = self.encoder_cell(
+                encoder_input,
+                (hidden, cell),
+            )
+
+            hidden = (
+                has_observation * proposed_hidden
+                + (1.0 - has_observation) * hidden
+            )
+
+            cell = (
+                has_observation * proposed_cell
+                + (1.0 - has_observation) * cell
+            )
+
+            elapsed = torch.where(
+                has_observation.bool(),
+                torch.zeros_like(elapsed),
+                elapsed,
+            )
+
+            previous_time = current_time
+
+        posterior_params = self.posterior_net(hidden)
+        z0_mean, z0_raw_std = torch.chunk(
+            posterior_params,
+            chunks=2,
+            dim=-1,
+        )
+
+        z0_std = torch.nn.functional.softplus(z0_raw_std) + 1e-8
+
+        return z0_mean, z0_std
+
+    def _last_observed_values(self, data, mask):
+        batch_size, n_timepoints, _ = data.shape
+        device = data.device
+
+        observed_event = mask.sum(dim=-1) > 0
+
+        indices = torch.arange(
+            n_timepoints,
+            device=device,
+        ).unsqueeze(0).expand(batch_size, -1)
+
+        last_indices = torch.where(
+            observed_event,
+            indices,
+            torch.zeros_like(indices),
+        ).max(dim=1).values
+
+        batch_indices = torch.arange(batch_size, device=device)
+
+        return data[batch_indices, last_indices]
+
+    def _decode(
+        self,
+        z_samples,
+        data,
+        mask,
+        truth_time_steps,
+        time_steps_to_predict,
+        mode,
+    ):
+        n_samples, batch_size, latent_dim = z_samples.shape
+        target_length = len(time_steps_to_predict)
+        input_dim = data.size(-1)
+
+        flattened_z = z_samples.reshape(
+            n_samples * batch_size,
+            latent_dim,
+        )
+
+        hidden = self.z_to_hidden(flattened_z)
+        cell = self.z_to_cell(flattened_z)
+
+        if mode == "extrap":
+            seed_values = self._last_observed_values(data, mask)
+
+            previous_values = seed_values.repeat(n_samples, 1)
+
+            first_delta = (time_steps_to_predict[0] - truth_time_steps[-1])
+
+            decoder_deltas = torch.cat(
+                [first_delta.reshape(1), time_steps_to_predict[1:] - time_steps_to_predict[:-1]], dim=0)
+
+            predictions = []
+            start_index = 0
+
+        else:
+            first_values = data[:, 0, :]
+
+            previous_values = first_values.repeat(n_samples, 1)
+
+            # As in the existing RNN-VAE implementation, the first
+            # interpolation output is the first observed point.
+            predictions = [
+                previous_values.reshape(
+                    n_samples,
+                    batch_size,
+                    input_dim,
+                )
+            ]
+
+            decoder_deltas = torch.cat(
+                [
+                    torch.zeros(
+                        1,
+                        device=data.device,
+                        dtype=data.dtype,
+                    ),
+                    time_steps_to_predict[1:]
+                    - time_steps_to_predict[:-1],
+                ],
+                dim=0,
+            )
+
+            start_index = 1
+
+        generated_mask = torch.ones_like(previous_values)
+
+        for index in range(start_index, target_length):
+            delta_t = decoder_deltas[index].expand(
+                n_samples * batch_size,
+                1,
+            )
+
+            decoder_input = torch.cat(
+                [
+                    previous_values,
+                    generated_mask,
+                    delta_t,
+                ],
+                dim=-1,
+            )
+
+            hidden, cell = self.decoder_cell(
+                decoder_input,
+                (hidden, cell),
+            )
+
+            predicted_values = self.output_net(hidden)
+
+            predictions.append(
+                predicted_values.reshape(
+                    n_samples,
+                    batch_size,
+                    input_dim,
+                )
+            )
+
+            previous_values = predicted_values
+
+        return torch.stack(predictions, dim=2)
+
+    def get_reconstruction(
+        self,
+        time_steps_to_predict,
+        data,
+        truth_time_steps,
+        mask=None,
+        n_traj_samples=1,
+        mode=None,
+    ):
+        if mask is None:
+            raise ValueError(
+                "LSTMDeltaTVAE requires an observation mask"
+            )
+
+        if mode not in {"interp", "extrap"}:
+            raise ValueError(
+                f"Unknown reconstruction mode: {mode}"
+            )
+
+        # Match the encoder-decoder protocol:
+        # interpolation -> encode backward toward t0
+        # extrapolation -> encode forward toward the last observation
+        run_backwards = mode == "interp"
+
+        z0_mean, z0_std = self._encode(
+            data,
+            mask,
+            truth_time_steps,
+            run_backwards=run_backwards,
+        )
+
+        n_traj_samples = max(1, int(n_traj_samples))
+
+        repeated_mean = z0_mean.unsqueeze(0).repeat(n_traj_samples, 1, 1)
+
+        repeated_std = z0_std.unsqueeze(0).repeat(n_traj_samples, 1, 1)
+
+        z_samples = utils.sample_standard_gaussian(repeated_mean, repeated_std)
+
+        outputs = self._decode(
+            z_samples,
+            data,
+            mask,
+            truth_time_steps,
+            time_steps_to_predict,
+            mode,
+        )
+
+        extra_info = {
+            "first_point": (
+                z0_mean.unsqueeze(0),
+                z0_std.unsqueeze(0),
+                z_samples,
+            )
+        }
+
+        return outputs, extra_info

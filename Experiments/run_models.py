@@ -35,6 +35,7 @@ from lib.diffeq_solver import DiffeqSolver
 #from mujoco_physics import HopperPhysics
 
 from lib.utils import compute_loss_all_batches
+from models.lstm import LSTMDeltaT, LSTMDeltaTVAE
 
 import json
 
@@ -97,6 +98,8 @@ parser.add_argument("--irregular_spiral", action="store_true")
 parser.add_argument("--irregular_window_time", type=float, default=2 * np.pi)
 parser.add_argument("--ntotal", type=int, default=None, help="Dense base trajectory length used to generate spiral windows. "
 															 "If not provided, a default formula based on pred_len is used.")
+parser.add_argument("--lstm-delta", action="store_true")
+parser.add_argument("--lstm-delta-vae", action="store_true")
 
 args = parser.parse_args()
 
@@ -271,7 +274,30 @@ if __name__ == '__main__':
 
 	z0_prior = Normal(torch.Tensor([0.0]).to(device), torch.Tensor([1.]).to(device))
 
-	if args.rnn_vae:
+	if args.lstm_delta:
+		if args.extrap:
+			raise ValueError("Autoregressive LSTMDeltaT supports interpolation only")
+
+		model = LSTMDeltaT(
+			input_dim=input_dim,
+			hidden_dim=args.latents,
+			device=device,
+			obsrv_std=obsrv_std,
+			n_units=args.units,
+		).to(device)
+
+	elif args.lstm_delta_vae:
+		model = LSTMDeltaTVAE(
+			input_dim=input_dim,
+			latent_dim=args.latents,
+			rec_dims=args.rec_dims,
+			z0_prior=z0_prior,
+			device=device,
+			obsrv_std=obsrv_std,
+			n_units=args.units,
+		).to(device)
+
+	elif args.rnn_vae:
 		if args.poisson:
 			print("Poisson process likelihood not implemented for RNN-VAE: ignoring --poisson")
 
@@ -291,7 +317,6 @@ if __name__ == '__main__':
 			n_labels = n_labels,
 			train_classif_w_reconstr = (args.dataset == "physionet")
 			).to(device)
-
 
 	elif args.classic_rnn:
 		if args.poisson:
@@ -361,6 +386,22 @@ if __name__ == '__main__':
 		exit()
 
 	##################################################################
+	#identify model type
+	if args.ode_rnn:
+		model_name = "ode_rnn"
+	elif args.lstm_delta:
+		model_name = "lstm_delta_t"
+	elif args.latent_ode and args.z0_encoder == "odernn":
+		model_name = "latent_ode_odernn_encoder"
+	elif args.lstm_delta_vae:
+		model_name = "lstm_delta_t_vae"
+	else:
+		model_name = "unknown"
+
+	task_name = ("extrapolation" if args.extrap else "interpolation")
+
+		
+
 	# Training
 
 	# log_path = "ode-rnn-training-logs/" + file_name + "_" + str(experimentID) + ".log"
@@ -384,6 +425,10 @@ if __name__ == '__main__':
 	best_epoch = -1
 	best_ckpt_path = os.path.join(args.save, "best_by_val.ckpt")
 
+	#Per iteration training histroy used to create graphs
+	training_history = []
+	epoch_train_loss_sum = 0.0
+
 	logger.info("Experiment " + str(experimentID))
 	for itr in range(1, num_batches * (args.niters + 1)):
 		print("HERE")
@@ -398,6 +443,7 @@ if __name__ == '__main__':
 
 		batch_dict = utils.get_next_batch(data_obj["train_dataloader"])
 		train_res = model.compute_all_losses(batch_dict, n_traj_samples = 3, kl_coef = kl_coef)
+		epoch_train_loss_sum += metric_to_float(train_res["loss"])
 		train_res["loss"].backward()
 		optimizer.step()
 
@@ -463,6 +509,38 @@ if __name__ == '__main__':
 				])
 		 	
 				logger.info("|".join(message_parts))
+
+				epoch_metrics = {
+					"epoch": epoch,
+					"train_loss": (
+						epoch_train_loss_sum
+						/ num_batches
+					),
+					"test_loss": metric_to_float(
+						test_res.get("loss")
+					),
+					"test_mse": metric_to_float(
+						test_res.get("mse")
+					),
+					"val_loss": None,
+					"val_mse": None,
+					"kl_coef": kl_coef,
+				}
+
+				if val_res is not None:
+					epoch_metrics["val_loss"] = (
+						metric_to_float(
+							val_res.get("loss")
+						)
+					)
+					epoch_metrics["val_mse"] = (
+						metric_to_float(
+							val_res.get("mse")
+						)
+					)
+
+				training_history.append(epoch_metrics)
+				epoch_train_loss_sum = 0.0
 				
 				if "auc" in test_res:
 					logger.info("Classification AUC (TEST): {:.4f}".format(test_res["auc"]))
@@ -504,6 +582,68 @@ if __name__ == '__main__':
 		'state_dict': model.state_dict(),
 	}, ckpt_path)
 
+	history_frame = pd.DataFrame(training_history)
+
+	model_display_names = {
+		"ode_rnn": "ODE-RNN",
+		"lstm_delta_t": "LSTM with delta_t",
+		"latent_ode_odernn_encoder": (
+			"Latent ODE with ODE-RNN Encoder"
+		),
+		"lstm_delta_t_vae": (
+			"LSTM with delta_t VAE"
+		),
+	}
+
+	display_name = model_display_names.get(model_name, model_name)
+
+	if not history_frame.empty:
+		fig, axes = plt.subplots(1, 2, figsize=(13, 5))
+
+		#Loss Curves
+		axes[0].plot(history_frame["epoch"], history_frame["train_loss"], label="Train Loss")
+		axes[0].plot(history_frame["epoch"], history_frame["test_loss"], label="Test Loss")
+
+		if ("val_loss" in history_frame and history_frame["val_loss"].notna().any()):
+			axes[0].plot(history_frame["epoch"], history_frame["val_loss"], label="Validation loss")
+
+		axes[0].set_xlabel("Epoch")
+		axes[0].set_ylabel("Loss")
+		axes[0].set_title("Loss")
+		axes[0].grid(alpha=0.3)
+		axes[0].legend()
+
+		# MSE curves.
+		axes[1].plot(
+			history_frame["epoch"],
+			history_frame["test_mse"],
+			label="Test MSE",
+		)
+
+		if ("val_mse" in history_frame and history_frame["val_mse"].notna().any()):
+			axes[1].plot(history_frame["epoch"], history_frame["val_mse"], label="Validation MSE")
+
+		axes[1].set_xlabel("Epoch")
+		axes[1].set_ylabel("Masked MSE")
+		axes[1].set_title("MSE")
+		axes[1].grid(alpha=0.3)
+		axes[1].legend()
+
+		fig.suptitle(
+			f"{display_name} — {task_name.capitalize()} — Seed {args.random_seed}")
+
+		fig.tight_layout()
+
+		graph_filename = (f"{model_name}_{task_name}_seed-{args.random_seed}_training_curves.png")
+
+		graph_path = os.path.join(args.save, graph_filename)
+
+		fig.savefig(graph_path, dpi=200, bbox_inches="tight")
+
+		plt.close(fig)
+
+		logger.info(f"Training graph saved to {graph_path}")
+
 	#Select model for final evaluation
 	selected_checkpoint = "final"
 
@@ -543,14 +683,6 @@ if __name__ == '__main__':
 			n_traj_samples=3,
 			kl_coef=kl_coef,
 		)
-
-	#identify model type
-	if args.ode_rnn:
-		model_name = "ode_rnn"
-	elif args.latent_ode and args.z0_encoder == "odernn":
-		model_name = "latent_ode_odernn_encoder"
-	else:
-		model_name = "unknown"
 
 	#Saving metrics
 	final_metrics = {
